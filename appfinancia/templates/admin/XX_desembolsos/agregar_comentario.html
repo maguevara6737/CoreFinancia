@@ -1,0 +1,11 @@
+{% extends "admin/base_site.html" %}
+
+<h2>Agregar Comentario a Desembolso</h2>
+
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Agregar Comentario</button>
+</form>
+
+<a href="{% url 'admin:appfinancia_desembolsos_change' desembolso.prestamo_id %}">Volver</a>

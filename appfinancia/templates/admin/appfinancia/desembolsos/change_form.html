@@ -1,0 +1,16 @@
+{% extends "admin/change_form.html" %}
+
+{% block after_field_sets %}
+  {{ block.super }}
+
+  {% if original %}
+  <div class="module aligned">
+    <h2>Agregar Comentario</h2>
+    <form method="post" action="{% url 'admin:agregar-comentario-desembolso' original.prestamo_id %}">
+      {% csrf_token %}
+      {{ comentario_form.as_p }}
+      <button type="submit">Agregar Comentario</button>
+    </form>
+  </div>
+  {% endif %}
+{% endblock %}

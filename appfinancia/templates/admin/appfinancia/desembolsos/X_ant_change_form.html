@@ -1,0 +1,125 @@
+<!-- templates/admin/appfinancia/desembolsos/change_form.html -->
+{% extends "admin/change_form.html" %}
+
+{% block after_field_sets %}
+{{ block.super }}
+
+{% if original %}
+<div class="module aligned">
+  <h2>Comentarios del Préstamo</h2>
+  
+  <div class="form-row">
+    <div>
+      <button type="button" class="button" data-toggle="modal" data-target="#addComentarioModal">
+        ➕ Añadir Comentario
+      </button>
+    </div>
+  </div>
+
+  <!-- Lista de comentarios -->
+  <div class="form-row mt-3">
+    <table class="table table-striped table-bordered" style="width:100%">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Comentario</th>
+          <th>Creado por</th>
+          <th>Fecha</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in original.comentarios_prestamos_set.all %}
+        <tr>
+          <td>{{ c.numero_comentario }}</td>
+          <td>{{ c.comentario_catalogo.operacion_id }} / {{ c.comentario_catalogo.evento_id }} - {{ c.comentario_catalogo.comentario }}</td>
+          <td>{{ c.creado_por.username }}</td>
+          <td>{{ c.fecha_comentario|date:"Y-m-d H:i" }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="4" class="text-center text-muted">No hay comentarios.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="addComentarioModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Nuevo Comentario</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <form id="comentario-form" method="post">
+        {% csrf_token %}
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="id_comentario_catalogo">Comentario del catálogo <span class="required">*</span></label>
+            <select name="comentario_catalogo" id="id_comentario_catalogo" class="form-control" required>
+              <option value="">-- Seleccione un comentario --</option>
+              {% for com in comentarios_habilitados %}
+              <option value="{{ com.pk }}">
+                {{ com.operacion_id }} / {{ com.evento_id }} - {{ com.comentario }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="button cancel-link" data-dismiss="modal">Cancelar</button>
+          <button type="submit" class="button default" id="save-btn">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+(function($) {
+  $(document).ready(function() {
+    const $form = $('#comentario-form');
+    const $btn = $('#save-btn');
+    const originalText = $btn.text();
+
+    $form.on('submit', function(e) {
+      e.preventDefault();
+      
+      const comentarioId = $('#id_comentario_catalogo').val();
+      if (!comentarioId) {
+        alert('⚠️ Por favor seleccione un comentario.');
+        return;
+      }
+
+      $btn.text('Guardando...').prop('disabled', true);
+
+      $.post(
+        '{% url "add_comentario_prestamo" original.prestamo_id %}',
+        $form.serialize(),
+        function(data) {
+          if (data.success) {
+            $('#addComentarioModal').modal('hide');
+            location.reload();
+          } else {
+            alert('❌ ' + (data.error || 'Error desconocido'));
+          }
+        },
+        'json'
+      ).fail(function(xhr) {
+        let msg = 'Error de red';
+        if (xhr.responseJSON?.error) msg = xhr.responseJSON.error;
+        else if (xhr.status === 403) msg = 'Sesión expirada. Recargue la página.';
+        alert('❌ ' + msg);
+      }).always(function() {
+        $btn.text(originalText).prop('disabled', false);
+      });
+    });
+  });
+})(django.jQuery);
+</script>
+{% endif %}
+{% endblock %}
