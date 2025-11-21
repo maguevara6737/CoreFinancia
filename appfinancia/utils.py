@@ -404,5 +404,4 @@ def calculate_loan_schedule(desembolso):
             saldo = Decimal('0.00')
 
     return results
-    
-#----------------------------------------------------------------2025/11/19
+	
