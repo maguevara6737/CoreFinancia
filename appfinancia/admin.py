@@ -9,6 +9,7 @@ from .models import Desembolsos,  Bitacora
 from . import utils  # importa las funciones definidas en utils.py
 from .utils import create_prestamo  # importa las funciones definidas en utils.py
 from .utils import create_movimiento  # importa las funciones definidas en services
+#from .utils import create_historia_prestamo  # importa las funciones definidas en services
 from .utils import calculate_loan_schedule, create_loan_payments   
 
 from django.contrib import admin
@@ -504,7 +505,7 @@ class DesembolsosAdmin(admin.ModelAdmin):
                     create_movimiento(desembolso)
 
                     # 3. Crear Historia_Prestamos inicial (registro de desembolso)
-                    #create_historia_prestamo(prestamo, desembolso, user_name=request.user.username)
+                   # create_historia_prestamo(prestamo, desembolso, user_name=request.user.username)
 
                     # 4. Calcular plan de pagos
                     plan_pagos = calculate_loan_schedule(desembolso)
@@ -799,64 +800,105 @@ class PoliticasAdmin(admin.ModelAdmin):
 
 #16--------------------------------------------------------------------------------------* 
 #   2025-11-15 Incluyo metodos para consultar cuotas pagadas, proyectadas, saldo pendiente
-
-from .models import   Prestamos                      
+from django.contrib import admin
+from .models import   Prestamos     
+from django.utils.html import format_html
+from django.urls import reverse                 
+from django.utils import timezone # Asegúrate de importar timezone si usas los métodos get_paid_cuotas o get_outstanding_balance
 
 @admin.register(Prestamos)
 class PrestamosAdmin(admin.ModelAdmin):
-    list_display = (
-        'prestamo_id', 'cliente_id', 
-         'fecha_formateada', 'valor'
-        
-    )
-    search_fields = (
-        'prestamo_id', 'cliente__cliente_id', 'asesor__asesor_Id'
-    )
+    list_display = ['prestamo_id', 'valor', 'fecha_desembolso','ver_plan_pagos_link',]
+    search_fields = [
+        'cliente_id__nombre',  # Si tienes un campo 'nombre' en Clientes
+        'asesor_id__nombre',
+        'prestamo_id__id',  # Si quieres buscar por el ID del desembolso
+    ]
     list_filter = (
-                'fecha_desembolso', 'aseguradora_id'
+        'fecha_desembolso',
+        'aseguradora_id'
     )
     ordering = ('-fecha_desembolso',)
     readonly_fields = (
-        'prestamo_id', 'fecha_vencimiento', 'fecha_desembolso'
+        'prestamo_id',
+        'fecha_vencimiento',
+        'fecha_desembolso'
     )
     list_per_page = 14
-    # 3. Método personalizado para mostrar la fecha en formato yyyy-mm-dd
+
+    # 3. Este método debe estar DENTRO de la clase y al mismo nivel de indentación que otros métodos
     def fecha_formateada(self, obj):
+        """
+        Método para mostrar la fecha en formato yyyy-mm-dd en la lista de admin.
+        """
+        # Asegúrate de que 'fecha_desembolso' sea un campo válido en tu modelo Prestamos
         return obj.fecha_desembolso.strftime('%Y-%m-%d')
-    fecha_formateada.short_description = 'Fecha Ini.'  # Nombre que aparece en el encabezado
-    fecha_formateada.admin_order_field = 'fecha'  # Permite ordenar por este campo
-    #--------------------------------
+
+    # 4. Importante: Define el encabezado de la columna
+    fecha_formateada.short_description = 'Fecha Ini.'
+    # 5. Opcional: Permite ordenar por este valor (refiriéndose al campo real del modelo)
+    fecha_formateada.admin_order_field = 'fecha_desembolso'
+
+    # 6. Este otro método también debe estar DENTRO de la clase y correctamente indentado
+        # --- MÉTODO CORREGIDO ---
+    def ver_plan_pagos_link(self, obj):
+        """
+        Método para crear un enlace al plan de pagos personalizado.
+        Accede al ID numérico del Desembolso relacionado.
+        """
+        # Obtiene el VALOR NUMÉRICO del ID del desembolso relacionado
+        prestamo_id_valor = obj.prestamo_id_id # <-- CORREGIDO: Usar _id
+
+        # Valida que el ID sea un entero positivo antes de usar reverse
+        if prestamo_id_valor and isinstance(prestamo_id_valor, int) and prestamo_id_valor > 0:
+            try:
+                # Solo intenta hacer reverse si el ID es válido
+                url = reverse('plan_pagos', kwargs={'prestamo_id': prestamo_id_valor})
+                # target="_blank" abre el enlace en una nueva pestaña
+                return format_html('<a href="{}" target="_blank">Ver Plan de Pagos</a>', url)
+            except Exception as e:
+                # Si reverse falla por cualquier otro motivo, devuelve un mensaje o enlace roto
+                # print(f"Error en reverse para prestamo_id {prestamo_id_valor}: {e}") # Descomenta para debug si es necesario
+                return format_html('<span style="color: red;">Error en URL</span>')
+        else:
+            # Si el ID no es válido (p. ej., es None o 0), muestra un mensaje indicándolo
+            # print(f"prestamo_id_id no válido: {prestamo_id_valor}, tipo: {type(prestamo_id_valor)}") # Descomenta para debug si es necesario
+            return format_html('<span style="color: gray;">N/A</span>')
+
+    ver_plan_pagos_link.short_description = 'Plan de Pagos'
+    # --- FIN DEL MÉTODO CORREGIDO ---
+
+
     fieldsets = (
         ('Identificación', {
-            'fields': ('prestamo_id', 'cliente_id', 'asesor', 'aseguradora', 'vendedor')
+            # CORREGIDO: Cambiado 'asesor' por 'asesor_id', 'aseguradora' por 'aseguradora_id', 'vendedor' por 'vendedor_id'
+            'fields': ('prestamo_id', 'cliente_id', 'asesor_id', 'aseguradora_id', 'vendedor_id')
         }),
         ('Tasa y Valores', {
+            # CORREGIDO: Removido 'numero_transaccion_cuota_1' porque no existe en el modelo Prestamos
             'fields': (
                 'tipo_tasa', 'tasa',
-                'valor', 'valor_cuota_1', 'numero_transaccion_cuota_1',
-                'valor_seguro_mes', 'tiene_fee'
+                'valor', 'valor_cuota_1', # <-- Removido 'numero_transaccion_cuota_1'
+                'valor_cuota_mensual', 'valor_seguro_mes', 'tiene_fee'
             )
         }),
         ('Condiciones', {
             'fields': ('dia_cobro', 'plazo_en_meses', 'fecha_desembolso', 'fecha_vencimiento')
         }),
-
     )
 
     def get_readonly_fields(self, request, obj=None):
-        if obj:  # Si ya existe
-            #return self.readonly_fields + ('cliente', 'asesor', 'aseguradora', 'vendedor', 'tipo_tasa')
-            return self.readonly_fields + ('prestamo_id', 'cliente', 'fecha_creacion')
+        if obj:  # Si el objeto ya existe (está siendo editado)
+            return self.readonly_fields + ('prestamo_id', 'cliente_id', 'fecha_creacion')
         return self.readonly_fields
 
     def save_model(self, request, obj, form, change):
         obj.full_clean()
         super().save_model(request, obj, form, change)
 
-        def get_total_cuotas(self):
-            #"""Número total de cuotas proyectadas."""
-            return len(self.get_payment_schedule())
-
+    # NOTA: Otros métodos como get_total_cuotas, get_paid_cuotas, etc.
+    # deben estar aquí, dentro de la clase y con la indentación correcta
+    # si planeas usarlos en list_display o fieldsets.
     def get_paid_cuotas(self):
         """Número de cuotas ya pagadas (abono_capital > 0 y fecha_vencimiento <= hoy)."""
         from .models import Historia_Prestamos, Conceptos_Transacciones
@@ -884,94 +926,49 @@ class PrestamosAdmin(admin.ModelAdmin):
 
 #17--------------------------------------------------------------------------------------*
 from django.contrib import admin
-from django.utils.html import format_html
 from .models import Historia_Prestamos
 
-@admin.register(Historia_Prestamos)
 class HistoriaPrestamosAdmin(admin.ModelAdmin):
-    # Mostrar todos los campos en la lista
+    # Usamos los campos reales del modelo
     list_display = (
-        'detalle_breve',  # ✅ Nuevo campo formateado
-        'prestamo_id',
+        'id',  # PK autogenerado por Django, o usa 'pk' si prefieres
+        'detalle_breve',
         'fecha_efectiva',
-        'fecha_proceso',
-        'numero_operacion',
-        'concepto_id',
-        'fecha_vencimiento',
-        'tasa',
-        'monto_transaccion',
-        'abono_capital',
-        'intrs_ctes',
-        'seguro',
-        'fee',
-        'estado',
+        'fecha_proceso'
     )
-    readonly_fields = ('mostrar_campos',)
-    # ... resto del código
-
-    def mostrar_campos(self, obj):
-        # Formatear fechas
-        fecha_efectiva = obj.fecha_efectiva.strftime('%Y-%m-%d') if obj.fecha_efectiva else ''
-        fecha_proceso = obj.fecha_proceso.strftime('%Y-%m-%d') if obj.fecha_proceso else ''
-        fecha_vencimiento = obj.fecha_vencimiento.strftime('%Y-%m-%d') if obj.fecha_vencimiento else ''
-
-        # Formatear números decimales
-        tasa = f"{obj.tasa:,.4f}" if obj.tasa else '0.0000'
-        monto_transaccion = f"{obj.monto_transaccion:,.2f}" if obj.monto_transaccion else '0.00'
-        abono_capital = f"{obj.abono_capital:,.2f}" if obj.abono_capital else '0.00'
-        intrs_ctes = f"{obj.intrs_ctes:,.2f}" if obj.intrs_ctes else '0.00'
-        seguro = f"{obj.seguro:,.2f}" if obj.seguro else '0.00'
-        fee = f"{obj.fee:,.2f}" if obj.fee else '0.00'
-
-        return format_html(
-            "<h3>Datos del Préstamo</h3>"
-            "<div><strong>Préstamo ID:</strong> {}</div>"
-            "<div><strong>Fecha Efectiva:</strong> {}</div>"
-            "<div><strong>Fecha Proceso:</strong> {}</div>"
-            "<div><strong>Número Operación:</strong> {}</div>"
-            "<div><strong>Concepto ID:</strong> {}</div>"
-            "<div><strong>Fecha Vencimiento:</strong> {}</div>"
-            "<div><strong>Tasa:</strong> {}</div>"
-            "<div><strong>Monto Transacción:</strong> {}</div>"
-            "<div><strong>Abono Capital:</strong> {}</div>"
-            "<div><strong>Intereses Ctes:</strong> {}</div>"
-            "<div><strong>Seguro:</strong> {}</div>"
-            "<div><strong>Fee:</strong> {}</div>"
-            "<div><strong>Usuario:</strong> {}</div>"
-            "<div><strong>Número Cuota:</strong> {}</div>"
-            "<div><strong>Estado:</strong> {}</div>",
-            obj.prestamo_id,
-            fecha_efectiva,
-            fecha_proceso,
-            obj.numero_operacion,
-            obj.concepto_id,
-            fecha_vencimiento,
-            tasa,
-            monto_transaccion,
-            abono_capital,
-            intrs_ctes,
-            seguro,
-            fee,
-            obj.usuario,
-            obj.numero_cuota,
-            obj.estado,
-        )
-
-    mostrar_campos.short_description = "Detalle del Préstamo"
-
+    readonly_fields = (
+        'detalle_breve', # Tu campo personalizado
+        'id',            # PK autogenerado por Django
+        'prestamo_id',   # Cambiado de 'prestamo' a 'prestamo_id'
+        'numero_cuota',  # Campo existente
+        'concepto_id',   # Cambiado de 'codigo_transaccion' a 'concepto_id'
+        'fecha_vencimiento', # Campo existente
+        'monto_transaccion', # Campo existente
+        'fecha_efectiva',    # Campo existente
+        'fecha_proceso',     # Campo existente
+        'abono_capital',     # Campo existente
+        'intrs_ctes',        # Campo existente
+        'seguro',            # Campo existente
+        'fee',               # Campo existente
+        'usuario',           # Campo existente
+        # 'comentario',     # Eliminado porque no existe en el modelo actual
+    )
     list_per_page = 14
+    # Opcional: Ocultar los campos individuales si solo se quiere mostrar el detalle_breve
+    fieldsets = (
+        (None, {
+            'fields': ('detalle_breve',)  # Solo se muestra el detalle_breve
+        }),
+        # Si se quiere ocultar completamente otros campos, no los incluyas aquí
+    )
 
-    # Desactivar la creación de nuevos registros
     def has_add_permission(self, request):
-        return False
+        return False  # Evita que se agreguen registros desde el admin
 
-    # Desactivar la eliminación
-    def has_delete_permission(self, request, obj=None):
-        return False
-    # Opcional: mejorar el título del campo en la lista (ej. mostrar nombres en lugar de "Prestamos object")
-    # Si los modelos relacionados (Prestamos, Conceptos_Transacciones) tienen __str__ bien definidos,
-    # ya se mostrarán correctamente.
+    def has_change_permission(self, request, obj=None):
+        return False  # Evita que se editen registros desde el admin
 
+admin.site.register(Historia_Prestamos, HistoriaPrestamosAdmin)
 #18--------------------------------------------------------------------------------------*
 
 #2025-11-15 Elimino Plan_Pagos

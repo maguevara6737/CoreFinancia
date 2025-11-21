@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Plan de Pagos - Préstamo {{ prestamo.prestamo_id.prestamo_id }}</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .header {
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 25px;
+        }
+        .header h1 {
+            color: #2c3e50;
+            margin: 0 0 10px 0;
+            font-size: 1.8em;
+        }
+        .info-cliente {
+            display: flex;
+            gap: 30px;
+            font-size: 1.1em;
+            color: #555;
+        }
+        .info-cliente div {
+            white-space: nowrap;
+        }
+        .label {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .boton-exportar {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+            margin-top: 15px;
+            transition: background-color 0.3s;
+        }
+        .boton-exportar:hover {
+            background-color: #45a049;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background-color: white;
+            box-shadow: 0 1px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            color: #333;
+            font-weight: 600;
+        }
+        .transaccion-row {
+            background-color: #f9f9f9;
+        }
+        .transaccion-row-alt {
+            background-color: #ffffff;
+        }
+        .no-transacciones {
+            text-align: center;
+            font-style: italic;
+            color: #777;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Encabezado principal con información del préstamo y cliente -->
+    <div class="header">
+        <h1>Plan de Pagos</h1>
+        <div class="info-cliente">
+            {% if prestamo.prestamo_id %}
+                <div><span class="label">Préstamo ID:</span> {{ prestamo.prestamo_id.prestamo_id }}</div>
+                <div><span class="label">Cliente:</span> {{ prestamo.prestamo_id.cliente_id.nombre }} {{ prestamo.prestamo_id.cliente_id.apellido }}</div>
+                <div><span class="label">ID Cliente:</span> {{ prestamo.prestamo_id.cliente_id.cliente_id }}</div>
+            {% else %}
+                <div><span class="label">Préstamo ID:</span> <span style="color: red;">(Sin desembolso asociado)</span></div>
+                <div><span class="label">Cliente:</span> <span style="color: red;">(No disponible)</span></div>
+                <div><span class="label">ID Cliente:</span> <span style="color: red;">(No disponible)</span></div>
+            {% endif %}
+        </div>
+        <!-- Agrega esta línea para depurar -->
+        <p>DEBUG: prestamo.pk = {{ prestamo.pk }}, prestamo.prestamo_id = {{ prestamo.prestamo_id }}, prestamo.prestamo_id.id = {{ prestamo.prestamo_id.id }}</p>
+        {% if prestamo.prestamo_id %}
+            <a class="boton-exportar" href="{% url 'exportar_historia_xlsx' prestamo.prestamo_id.pk %}" target="_blank">
+                📥 Exportar a Excel
+            </a>
+        {% else %}
+            <p class="error">No se puede exportar: préstamo no tiene desembolso asociado.</p>
+        {% endif %}
+    </div>
+
+    <!-- Tabla del plan de pagos -->
+    {% if plan %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Cuota</th>
+                    <th>Fecha Venc.</th>
+                    <th>Total Cuota</th>
+                    <th>Capital</th>
+                    <th>Intereses</th>
+                    <th>Seguro</th>
+                    <th>Fee</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in plan %}
+                    <tr class="{% cycle 'transaccion-row' 'transaccion-row-alt' %}">
+                        <td>{{ item.cuota }}</td>
+                        <td>{{ item.fecha_vencimiento|date:"Y-m-d" }}</td> <!-- Formato yyyy-mm-dd -->
+                        <td><strong>${{ item.total_cuota|floatformat:2 }}</strong></td>
+                        <td>${{ item.capital|floatformat:2 }}</td>
+                        <td>${{ item.intereses|floatformat:2 }}</td>
+                        <td>${{ item.seguro|floatformat:2 }}</td>
+                        <td>${{ item.fee|floatformat:2 }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="no-transacciones">No hay movimientos registrados para este préstamo.</p>
+    {% endif %}
+
+</body>
+</html>

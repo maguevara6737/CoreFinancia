@@ -8,6 +8,7 @@ from dateutil.relativedelta import relativedelta
 from django.utils import timezone
 from django.conf import settings
 from decimal import Decimal
+from datetime import datetime
 
 from .utils import get_politicas, get_next_prestamo_id
 
@@ -431,7 +432,7 @@ class Clientes(models.Model):
         ordering = ['apellido', 'nombre']
 
     def __str__(self):
-        return f"{self.nombre} {self.apellido} ({self.cliente_id})"
+        return f"{self.nombre} {self.apellido} - {self.cliente_id})" 
 
   
   
@@ -556,7 +557,7 @@ class Desembolsos(models.Model):
         ordering = ['-fecha_desembolso']
 
     def __str__(self):
-        return f"Desembolso {self.prestamo_id} - Cliente {self.cliente_id}"
+        return f"{self.prestamo_id} -  {self.cliente_id}"
 
     # ═════════════════════════════════════════════════════════════
     # 1. VALIDACIÓN DE TRANSICIÓN DE ESTADO (SOLO: ELABORACION → A_DESEMBOLSAR)
@@ -1053,6 +1054,35 @@ class Prestamos(models.Model):
             })
 
         return schedule
+    
+    # Dentro de la clase Prestamos en models.py
+    def get_total_cuotas(self):
+        # Número total de cuotas proyectadas.
+        return len(self.get_payment_schedule())
+
+    def get_paid_cuotas(self):
+        """Número de cuotas ya pagadas (abono_capital > 0 y fecha_vencimiento <= hoy)."""
+        from .models import Historia_Prestamos, Conceptos_Transacciones
+        try:
+            concepto_cuota = Conceptos_Transacciones.objects.get(concepto_id="CUOTA")
+        except Conceptos_Transacciones.DoesNotExist:
+            return 0
+
+        today = timezone.now().date()
+        return Historia_Prestamos.objects.filter(
+            prestamo_id=self,
+            concepto_id=concepto_cuota,
+            abono_capital__gt=0,
+            fecha_vencimiento__lte=today
+        ).count()
+
+    def get_outstanding_balance(self):
+        """Saldo pendiente: suma de cuotas no pagadas (capital + intereses + seguro)"""
+        schedule = self.get_payment_schedule()
+        return sum(
+            cuota['total_cuota'] for cuota in schedule
+            if cuota['estado'] in ['PROYECTADO', 'VENCE_HOY', 'MOROSO']
+        )
     #-------------------------------
 
 
@@ -1061,6 +1091,22 @@ class Prestamos(models.Model):
 #17--------------------------------------------------------------------------------------------------------
 #2025-11-15 actualizo Historia con campos de cuotas
 from django.db import models
+from django.utils.html import format_html
+from django.utils import timezone
+from django.contrib.auth.models import User
+from datetime import datetime
+from decimal import Decimal # Añadido para manejo seguro
+
+# --- Asumiendo que los otros modelos están definidos previamente ---
+# class Clientes(models.Model): ...
+# class Desembolsos(models.Model): ...
+# class Conceptos_Transacciones(models.Model): ...
+# class Asesores(models.Model): ...
+# class Aseguradoras(models.Model): ...
+# class Vendedores(models.Model): ...
+# class Tasas(models.Model): ...
+# class Prestamos(models.Model): ... (el modelo que tiene la FK a Desembolsos)
+
 class Historia_Prestamos(models.Model):
     ESTADO_CHOICES = [
         ('A DESEMBOLSAR', 'A desembolsar'),
@@ -1069,7 +1115,9 @@ class Historia_Prestamos(models.Model):
         ('MOROSO', 'Moroso'),
     ]
 
-    prestamo_id = models.ForeignKey('Prestamos', on_delete=models.CASCADE)
+    # Ajustamos el nombre del campo para que sea más claro, si es posible
+    # prestamo = models.ForeignKey('Prestamos', on_delete=models.CASCADE) # Opción más clara
+    prestamo_id = models.ForeignKey('Prestamos', on_delete=models.CASCADE) # Como está actualmente
     fecha_efectiva = models.DateField()
     fecha_proceso = models.DateField()
     ordinal_interno = models.IntegerField()
@@ -1088,9 +1136,54 @@ class Historia_Prestamos(models.Model):
     estado = models.CharField(max_length=14, choices=ESTADO_CHOICES, default='PENDIENTE')
 
     def detalle_breve(self):
-        return f"{self.prestamo_id} - {self.numero_cuota} - {self.concepto_id} - {self.fecha_vencimiento} - {self.monto_transaccion:,.2f}"
-    detalle_breve.short_description = "Detalle Breve"
+        # Accedemos al cliente a través de la cadena de relaciones:
+        # Historia_Prestamos -> Prestamos -> Desembolsos -> Clientes
+        try:
+            cliente = self.prestamo_id.prestamo_id.cliente_id # Accedemos al objeto Cliente
+        except AttributeError:
+            # Si alguna relación es nula, lo manejamos
+            cliente = None
 
+        # Accedemos al código de la transacción a través de concepto_id
+        try:
+            codigo_transaccion = self.concepto_id.codigo_transaccion # Usamos 'codigo_transaccion'
+        except AttributeError:
+            codigo_transaccion = "N/A"
+
+        # Accedemos al ID del préstamo real (desembolso)
+        try:
+            id_prestamo_real = self.prestamo_id.prestamo_id.prestamo_id # Accedemos al PK del objeto Desembolso
+        except AttributeError:
+            id_prestamo_real = "N/A"
+
+        # Manejo seguro del monto_transaccion
+        monto = self.monto_transaccion
+        if monto is None or not isinstance(monto, (int, float, Decimal)):
+            monto_formateado = "$0.00"
+        else:
+            # Aseguramos que sea un número antes de formatear
+            monto_num = float(monto)
+            monto_formateado = f"${monto_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") # Formato para es-ES
+
+        # Manejo de campos que podrían ser nulos
+        nombre_cliente = getattr(cliente, 'nombre', 'N/A')
+        apellido_cliente = getattr(cliente, 'apellido', 'N/A')
+        id_cliente = getattr(cliente, 'cliente_id', 'N/A')
+        num_cuota = self.numero_cuota if self.numero_cuota is not None else 'N/A'
+
+        return format_html(
+            "<div style='font-family:monospace; white-space:pre;'>"
+            "{} {} {} - {} - {} - {} - {} - {}"
+            "</div>",
+            nombre_cliente,
+            apellido_cliente,
+            id_cliente,
+            id_prestamo_real,
+            num_cuota,
+            codigo_transaccion,
+            self.fecha_vencimiento.strftime('%Y/%m/%d'),
+            monto_formateado # Usamos el valor ya formateado como string
+        ) # Cierre del método detalle_breve
 
     class Meta:
         unique_together = ('prestamo_id', 'fecha_efectiva', 'fecha_proceso', 'numero_operacion')
@@ -1102,6 +1195,7 @@ class Historia_Prestamos(models.Model):
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
+
 
  
 #18--------------------------------------------------------------------------------------------------------

@@ -15,7 +15,8 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-#from django.urls import path
+from django.urls import path, include 
+##from appfinancia import views as appfinancia_views
 
 # para prueba de login \ logout 2025.10.28
 
@@ -24,8 +25,7 @@ from django.urls import path, include
 urlpatterns = [
     path('admin/', admin.site.urls),
     # ...para login\logout 2025.10.28
-    path('', include('appfinancia.urls')),  # 👈 incluye las rutas de la app
+    ## path('', include('appfinancia.urls')),  # 👈 incluye las rutas de la app
     path('appfinancia/', include('appfinancia.urls')),
-        
 ]
 
