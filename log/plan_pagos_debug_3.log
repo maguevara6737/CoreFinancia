@@ -1,0 +1,26 @@
+
+--------------------------------------------------
+DEBUG: plan_de_pagos_view - Prestamo ID (Desembolso): 7, Fecha: 2025-11-20 01:52:17.542776+00:00
+--------------------------------------------------
+
+--- Transacciones recuperadas para prestamo_id_id=7 (obj Prestamo=19) ---
+  Cuota: 1, Fecha Venc: 2025-11-11, Op: 0, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: CUOTA CAP - PLAN CUOTA A CAPITAL
+  Cuota: 2, Fecha Venc: 2025-12-09, Op: 1, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: CUOTA CAP - PLAN CUOTA A CAPITAL
+  Cuota: 2, Fecha Venc: 2025-12-09, Op: 2, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: PLAN INTS - PLAN PAGOS INTERESES
+  Cuota: 3, Fecha Venc: 2026-01-09, Op: 3, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: CUOTA CAP - PLAN CUOTA A CAPITAL
+  Cuota: 3, Fecha Venc: 2026-01-09, Op: 4, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: PLAN INTS - PLAN PAGOS INTERESES
+  Cuota: 4, Fecha Venc: 2026-02-09, Op: 5, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: CUOTA CAP - PLAN CUOTA A CAPITAL
+  Cuota: 4, Fecha Venc: 2026-02-09, Op: 6, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: PLAN INTS - PLAN PAGOS INTERESES
+  Cuota: 5, Fecha Venc: 2026-03-09, Op: 7, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: CUOTA CAP - PLAN CUOTA A CAPITAL
+  Cuota: 5, Fecha Venc: 2026-03-09, Op: 8, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: PLAN INTS - PLAN PAGOS INTERESES
+  Cuota: 6, Fecha Venc: 2026-04-09, Op: 9, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: CUOTA CAP - PLAN CUOTA A CAPITAL
+  Cuota: 6, Fecha Venc: 2026-04-09, Op: 10, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: PLAN INTS - PLAN PAGOS INTERESES
+  Cuota: 7, Fecha Venc: 2026-05-09, Op: 11, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: CUOTA CAP - PLAN CUOTA A CAPITAL
+  Cuota: 7, Fecha Venc: 2026-05-09, Op: 12, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: PLAN INTS - PLAN PAGOS INTERESES
+  Cuota: 8, Fecha Venc: 2026-06-09, Op: 13, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: CUOTA CAP - PLAN CUOTA A CAPITAL
+  Cuota: 8, Fecha Venc: 2026-06-09, Op: 14, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: PLAN INTS - PLAN PAGOS INTERESES
+  Cuota: 9, Fecha Venc: 2026-07-09, Op: 15, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: CUOTA CAP - PLAN CUOTA A CAPITAL
+  Cuota: 9, Fecha Venc: 2026-07-09, Op: 16, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: PLAN INTS - PLAN PAGOS INTERESES
+  Cuota: 10, Fecha Venc: 2026-08-09, Op: 17, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: CUOTA CAP - PLAN CUOTA A CAPITAL
+  Cuota: 10, Fecha Venc: 2026-08-09, Op: 18, Capital: 0.00, Intereses: 0.00, Seguro: 0.00, Fee: 0.00, Concepto: PLAN INTS - PLAN PAGOS INTERESES
+Total transacciones: 19

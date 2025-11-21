@@ -148,11 +148,16 @@ from datetime import date
 
 
 def create_prestamo(desembolso):
-    from  .models import Prestamos
+    
+    from .models import Prestamos
     """
     Creates a Prestamo record based on a Desembolso instance.
     Uses default values for optional fields if not provided.
     """
+    print(f"DEBUG: create_prestamo recibió desembolso = {desembolso}, tipo = {type(desembolso)}")
+    if desembolso is None or not hasattr(desembolso, 'pk'):
+        raise ValueError(f"Desembolso inválido: {desembolso}")
+    
     prestamo = Prestamos.objects.create(
         prestamo_id=desembolso,
         cliente_id=desembolso.cliente_id,
