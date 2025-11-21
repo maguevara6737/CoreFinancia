@@ -1,0 +1,47 @@
+{% extends "admin/change_form.html" %}
+
+{% block submit_buttons_bottom %}
+    {{ block.super }}
+
+    {% if original %}
+        <div style="margin: 30px 0; padding: 20px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 10px; text-align: center;">
+            
+            <h4 style="margin: 0 0 15px 0; color: #1a1a1a;">
+                Préstamo: <strong style="color: #007bff;">{{ original.prestamo_id }}</strong>
+            </h4>
+
+            <p style="margin: 12px 0; font-size: 16px; color: #333;">
+                <strong>Cliente:</strong> {{ original.cliente_id }}
+                &nbsp;&nbsp;•&nbsp;&nbsp;
+                <strong>Valor:</strong> ${{ original.valor|floatformat:2 }}
+                &nbsp;&nbsp;•&nbsp;&nbsp;
+                <strong>Estado:</strong>
+                <span style="padding: 6px 16px; border-radius: 30px; color: white; font-weight: bold;
+                    {% if original.estado == 'DESEMBOLSADO' %}background: #28a745;
+                    {% elif original.estado == 'ANULADO' %}background: #dc3545;
+                    {% elif original.estado == 'PENDIENTE' %}background: #ffc107; color: #212529;
+                    {% else %}background: #6c757d;{% endif %}
+                ">
+                    {{ original.get_estado_display }}
+                </span>
+            </p>
+
+            <div style="margin-top: 20px;">
+                <!-- OPCIÓN 1: URL directa (RECOMENDADA) -->
+                <a href="/admin/appfinancia/comentarios_prestamos/add/?prestamo={{ original.prestamo_id }}"
+                   target="_blank"
+                   style="display: inline-block; padding: 12px 28px; background: #007bff; color: white; text-decoration: none; border-radius: 8px; font-size: 15px; margin: 0 10px;">
+                    Añadir Comentario
+                </a>
+
+                {% if original.estado == 'PENDIENTE' %}
+                    <button type="button"
+                            style="display: inline-block; padding: 12px 28px; background: #28a745; color: white; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; margin: 0 10px;"
+                            onclick="alert('Funcionalidad en desarrollo')">
+                        Procesar Desembolso
+                    </button>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

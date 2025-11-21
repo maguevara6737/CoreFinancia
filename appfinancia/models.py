@@ -9,9 +9,7 @@ from django.utils import timezone
 from django.conf import settings
 from decimal import Decimal
 
-
 from .utils import get_politicas, get_next_prestamo_id
-
 
 # Create your models here.
 #1---------------------------------------------------------------------------------------*
@@ -495,156 +493,62 @@ class Clientes(models.Model):
 
 #10---------------------------------------------------------------------------------------*
 #desembolsos
-#from dateutil.relativedelta import relativedelta
 
-# models.py
- # Asegúrate de tener estas funciones
+#from django.db import models
+#from django.core.exceptions import ValidationError
+#from django.utils import timezone
+#from datetime import date
+#from dateutil.relativedelta import relativedelta
+#from .utils import get_next_prestamo_id, get_politicas
+
 
 class Desembolsos(models.Model):
     ESTADO_CHOICES = [
-        ('ELABORACION', 'ELABORACION'),
-        ('PENDIENTE', 'PENDIENTE'),
-        ('DESEMBOLSADO', 'DESEMBOLSADO'),
-        ('ANULADO', 'ANULADO'),
+        ('ELABORACION', 'Elaboración'),
+        ('A_DESEMBOLSAR', 'A desembolsar'),
+        ('DESEMBOLSADO', 'Desembolsado'),
+        ('ANULADO', 'Anulado'),
     ]
 
     TIENE_FEE_CHOICES = [
-        ('SI', 'SI'),
-        ('NO', 'NO'),
+        ('SI', 'Sí'),
+        ('NO', 'No'),
     ]
 
-    # Clave primaria autogenerada
+    # === CAMPOS CLAVE ===
     prestamo_id = models.BigIntegerField(
         primary_key=True,
         editable=False,
         help_text="ID único del préstamo, generado automáticamente."
     )
 
-    # Claves foráneas
-    cliente_id = models.ForeignKey(
-        'Clientes',
-        on_delete=models.PROTECT,
-        to_field='cliente_id',
-        help_text="Cliente asociado."
-    )
-
-    asesor_id = models.ForeignKey(
-        'Asesores',
-        on_delete=models.PROTECT,
-        to_field='asesor_id',
-        help_text="Asesor responsable."
-    )
-
-    aseguradora_id = models.ForeignKey(
-        'Aseguradoras',
-        on_delete=models.PROTECT,
-        to_field='aseguradora_id',
-        help_text="Aseguradora del préstamo."
-    )
-
-    vendedor_id = models.ForeignKey(
-        'Vendedores',
-        on_delete=models.PROTECT,
-        to_field='cod_venta_id',
-        help_text="Vendedor asociado."
-    )
-
+    cliente_id = models.ForeignKey('Clientes', on_delete=models.PROTECT, to_field='cliente_id')
+    asesor_id = models.ForeignKey('Asesores', on_delete=models.PROTECT, to_field='asesor_id')
+    aseguradora_id = models.ForeignKey('Aseguradoras', on_delete=models.PROTECT, to_field='aseguradora_id')
+    vendedor_id = models.ForeignKey('Vendedores', on_delete=models.PROTECT, to_field='cod_venta_id')
     tipo_tasa = models.ForeignKey(
         'Tasas',
         on_delete=models.PROTECT,
         to_field='tipo_tasa',
+        null=True,
         blank=True,
         help_text="Tipo de tasa (ej. 'CON SEGURO')."
     )
 
-    # Valores financieros
-    tasa = models.DecimalField(
-        max_digits=4,
-        decimal_places=2,
-        default=0,
-        help_text="Tasa de interés aplicada (dos enteros, dos decimales)."
-    )
-
-    valor = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Valor total del préstamo."
-    )
-
-    valor_cuota_1 = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Valor de la primera cuota."
-    )
-
-    numero_transaccion_cuota_1 = models.CharField(
-        max_length=10,
-        blank=True,
-        verbose_name="#Trans.Cuota 1",
-        help_text="Número de transacción de la primera cuota (opcional)."
-    )
-
-    valor_cuota_mensual = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Valor de la cuota mensual."
-    )
-
-    valor_seguro_mes = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Valor del seguro mensual."
-    )
-
-    tiene_fee = models.CharField(
-        max_length=2,
-        choices=TIENE_FEE_CHOICES,
-        help_text="Indica si el préstamo tiene fee ('SI' o 'NO')."
-    )
-
-    dia_cobro = models.PositiveSmallIntegerField(
-        blank=True,
-        help_text="Día de cobro mensual (1 a 30)."
-    )
-
-    plazo_en_meses = models.PositiveSmallIntegerField(
-        blank=True,
-        default=0,
-        help_text="Plazo en meses."
-    )
-
-    fecha_desembolso = models.DateField(
-        default=timezone.now,
-        help_text="Fecha de desembolso."
-    )
-
-    fecha_vencimiento = models.DateField(
-        editable=False,
-        null=True,
-        blank=True,
-        help_text="Fecha de vencimiento calculada automáticamente."
-    )
-
-    estado = models.CharField(
-        max_length=13,
-        choices=ESTADO_CHOICES,
-        default='ELABORACION',
-        help_text="Estado del desembolso."
-    )
-
-    #    fecha_creacion = models.DateTimeField(
-    #        auto_now_add=True,
-    #        help_text="Fecha y hora de creación (automática)."
-    #    )
-
-    fecha_creacion = models.DateTimeField(
-        default=timezone.now,
-        help_text="Fecha y hora de creación (automática, no editable)."
-    )
+    # === VALORES FINANCIEROS ===
+    tasa = models.DecimalField(max_digits=4, decimal_places=2, default=0)
+    valor = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    valor_cuota_1 = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    numero_transaccion_cuota_1 = models.CharField(max_length=10, blank=True, verbose_name="#Trans.Cuota 1")
+    valor_cuota_mensual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    valor_seguro_mes = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    tiene_fee = models.CharField(max_length=2, choices=TIENE_FEE_CHOICES, default='NO')
+    dia_cobro = models.PositiveSmallIntegerField(default=1, help_text="Día de cobro (1-30)")
+    plazo_en_meses = models.PositiveSmallIntegerField(default=12)
+    fecha_desembolso = models.DateField(default=timezone.now)
+    fecha_vencimiento = models.DateField(editable=False, null=True, blank=True)
+    estado = models.CharField(max_length=14, choices=ESTADO_CHOICES, default='ELABORACION')
+    fecha_creacion = models.DateTimeField(default=timezone.now, editable=False)
 
     class Meta:
         verbose_name = "Desembolso"
@@ -652,111 +556,115 @@ class Desembolsos(models.Model):
         ordering = ['-fecha_desembolso']
 
     def __str__(self):
-        return f"Desembolso {self.prestamo_id} -  {self.cliente_id}"
+        return f"Desembolso {self.prestamo_id} - Cliente {self.cliente_id}"
 
+    # ═════════════════════════════════════════════════════════════
+    # 1. VALIDACIÓN DE TRANSICIÓN DE ESTADO (SOLO: ELABORACION → A_DESEMBOLSAR)
+    # ═════════════════════════════════════════════════════════════
 
-    def clean(self):        
-        super().clean()
+    def _validar_transicion_permitida(self, estado_anterior, estado_nuevo):
+        """
+        Única transición permitida desde el formulario:
+          ELABORACION → A_DESEMBOLSAR
+        Cualquier otra transición debe hacerse mediante acción explícita.
+        """
+        if estado_anterior == 'ELABORACION' and estado_nuevo == 'A_DESEMBOLSAR':
+            return  # ✅ Permitido
+        raise ValidationError(
+            "Solo se permite la transición: 'ELABORACION' → 'A_DESEMBOLSAR'. "
+            "Para pasar a 'DESEMBOLSADO' o 'ANULADO', use una acción explícita."
+        )
 
+    def _validar_estado_a_desembolsar(self):
+        """Validaciones exhaustivas al intentar pasar a 'A_DESEMBOLSAR'."""
         try:
             politicas = get_politicas()
         except Exception as e:
             raise ValidationError(f"Error al cargar políticas: {e}")
 
-        # Validar tasa          
-        if self.tasa is not None:
-            if not (politicas.tasa_min <= self.tasa <= politicas.tasa_max):
-               raise ValidationError({
-                'tasa': f"La tasa debe estar entre {politicas.tasa_min} y {politicas.tasa_max}."
-                })
+        errores = {}
 
-        # Validar valor_cuota_1 (solo si valor > 0)
-        if self.valor and self.valor > 0 and self.valor_cuota_1 is not None:
-            min_cuota = Decimal(self.valor) * Decimal(politicas.porcentaje_min_cuota_ini) * Decimal(0.01)
-            max_cuota = Decimal(self.valor) * Decimal(politicas.porcentaje_max_cuota_ini) * Decimal(0.01) 
-            if not (min_cuota <= Decimal(self.valor_cuota_1) <= max_cuota):
-                raise ValidationError({
-                    'valor_cuota_1': f"La cuota inicial debe estar entre {min_cuota:,.2f} y {max_cuota:,.2f}."
-                })
-        
-        
-        # Validar valor_seguro_mes ≤ 20% del valor
-        if self.valor and self.valor_seguro_mes is not None:
-            max_seguro = Decimal(self.valor) * Decimal(0.020)
-            if Decimal(self.valor_seguro_mes) > max_seguro:
-                raise ValidationError({
-                    'valor_seguro_mes': f"El seguro no puede superar el 20% del valor ({max_seguro:,.2f})."
-                })
-
-        # Validar plazo_en_meses
-        if self.plazo_en_meses:
-            if not (politicas.plazo_min <= self.plazo_en_meses <= politicas.plazo_max):
-                raise ValidationError({
-                    'plazo_en_meses': f"El plazo debe estar entre {politicas.plazo_min} y {politicas.plazo_max} meses."
-                })
-
-        # Validar dia_cobro (1-30)
-        if self.dia_cobro and not (1 <= self.dia_cobro <= 30):
-            raise ValidationError({'dia_cobro': 'El día de cobro debe estar entre 1 y 30.'})
-
-        # Validar fecha_desembolso
-        if self.fecha_desembolso:
-            hoy = date.today()
-            if self.fecha_desembolso > hoy:
-                raise ValidationError({'fecha_desembolso': 'No puede ser futura.'})
-            
-            # Suponemos que politicas tiene dias_max_desembolso_atras
-            #dias_atras = getattr(politicas, 'dias_max_desembolso_atras', 10)
-            dias_atras = politicas.dias_max_desembolso_atras
-            min_fecha = hoy - timedelta(days=dias_atras)
-            if self.fecha_desembolso < min_fecha:
-                raise ValidationError({
-                    'fecha_desembolso': f"No puede ser menor a {min_fecha} ({dias_atras} días atrás)."
-                })
-
-        # Validar si el desembolso es cero, el Valor de la Cuota_1 también será cero
-        if Decimal(self.valor) == 0: 
-           self.valor_cuota_1 = 0
-
-        #Validar si la tasa es con seguro, debe ingresar el valor del seguro
-        
+        # 1. Tipo de tasa obligatorio
         if not self.tipo_tasa:
-            tip_tasa = self.tipo_tasa.tipo_tasa
-            if tip_tasa.startswith("CON") and Decimal(self.valor_seguro_mes) == 0:
-               raise ValidationError("La tasa es con seguro. Debe ingresar el valor del seguro mensual.")
-            if tip_tasa.startswith("SIN"):
-               self.valor_seguro_mes = 0
-                         
-        #print(f"Tipo de tasa seleccionada: {self.tipo_tasa}")
-        #print(f"Tipo de tasa tip_tasa: {tip_tasa}")
-        #print(f"valor seguro mes: {self.valor_seguro_mes}")
+            errores['tipo_tasa'] = "El tipo de tasa es obligatorio para pasar a 'A desembolsar'."
+                # Validar tasa          
         
-                  
+        # 2. Tasa válida
+        if self.tasa <= 0:
+            errores['tasa'] = "La tasa debe ser mayor a 0%."
+        elif not (politicas.tasa_min <= self.tasa <= politicas.tasa_max):
+            errores['tasa'] = f"La tasa debe estar entre {politicas.tasa_min}% y {politicas.tasa_max}%."
+
+        # 3. Valor del préstamo válido
+        if self.valor <= 0:
+            errores['valor'] = "El valor del préstamo debe ser mayor a cero."
+        elif not (politicas.valor_cred_min <= self.valor <= politicas.valor_cred_max):
+            errores['valor'] = f"El valor debe estar entre ${politicas.valor_cred_min:,.0f} y ${politicas.valor_cred_max:,.0f}."
+
+        # 4. Cuota inicial en rango permitido
+        if self.valor > 0 and self.valor_cuota_1 > 0:
+            min_cuota = self.valor * (politicas.porcentaje_min_cuota_ini / 100)
+            max_cuota = self.valor * (politicas.porcentaje_max_cuota_ini / 100)
+            if not (min_cuota <= self.valor_cuota_1 <= max_cuota):
+                errores['valor_cuota_1'] = f"Cuota inicial debe estar entre ${min_cuota:,.0f} y ${max_cuota:,.0f}."
+
+        # 5. Plazo en rango permitido
+        if not (politicas.plazo_min <= self.plazo_en_meses <= politicas.plazo_max):
+            errores['plazo_en_meses'] = f"Plazo debe estar entre {politicas.plazo_min} y {politicas.plazo_max} meses."
+
+        # 6. Día de cobro válido
+        if not (1 <= self.dia_cobro <= 30):
+            errores['dia_cobro'] = "Día de cobro debe estar entre 1 y 30."
+
+        # 7. Fecha de desembolso no futura
+        hoy = date.today()
+        if self.fecha_desembolso > hoy:
+            errores['fecha_desembolso'] = "La fecha de desembolso no puede ser futura."
+
+        # 8. Fecha de desembolso no demasiado antigua
+        dias_atras = getattr(politicas, 'dias_max_desembolso_atras', 10)
+        min_fecha = hoy - relativedelta(days=dias_atras)
+        if self.fecha_desembolso < min_fecha:
+            errores['fecha_desembolso'] = f"La fecha no puede ser anterior a {min_fecha} ({dias_atras} días atrás)."
+
+        if errores:
+            self.estado = 'ELABORACION'
+            raise ValidationError(errores)
+
+    def clean(self):
+        super().clean()
+
+        # Validar transición de estado solo en edición
+        if not self._state.adding:
+            try:
+                estado_anterior = Desembolsos.objects.values_list('estado', flat=True).get(pk=self.pk)
+            except Desembolsos.DoesNotExist:
+                estado_anterior = 'ELABORACION'
+
+            if self.estado != estado_anterior:
+                self._validar_transicion_permitida(estado_anterior, self.estado)
+
+        # Ejecutar validaciones de 'A_DESEMBOLSAR' si aplica
+        if self.estado == 'A_DESEMBOLSAR':
+            self._validar_estado_a_desembolsar()
+            
+
     def save(self, *args, **kwargs):
-        # 1. Asignar prestamo_id
+        # Generar ID si es nuevo
         if not self.prestamo_id:
             self.prestamo_id = get_next_prestamo_id()
 
-        # 2. Asignar tasa desde tipo_tasa (si no se sobrescribe)        
-        if self.tipo_tasa and not self.tasa:
-           self.tasa = self.tipo_tasa.tasa
-
-        # 3. Asignar fecha_desembolso = hoy si no se define
-        if not self.fecha_desembolso:
-            self.fecha_desembolso = date.today()
-
-        # 4. Calcular fecha_vencimiento
-        if self.fecha_desembolso and self.plazo_en_meses:
+        # Calcular fecha de vencimiento
+        if self.fecha_desembolso and self.plazo_en_meses > 0:
             self.fecha_vencimiento = self.fecha_desembolso + relativedelta(months=self.plazo_en_meses)
 
-        # 5. Estado por defecto
-        if not self.estado:
-            self.estado = 'PENDIENTE'
-        
-        # 6. Validar
+        # Validar antes de guardar
         self.full_clean()
 
         super().save(*args, **kwargs)
+        
+#Fin desembolsos
+
 
 #11---------------------------------------------------------------------------------------*
 class Conceptos_Transacciones(models.Model):   #2025-11-15 NOTA: incluir concepto de cuota
@@ -810,6 +718,8 @@ class Conceptos_Transacciones(models.Model):   #2025-11-15 NOTA: incluir concept
         if self.descripcion:
             self.descripcion = self.descripcion.strip().upper()
         super().save(*args, **kwargs)
+
+
 
 #12--------------------------------------------------------------------------------------*
 
@@ -903,55 +813,43 @@ class Comentarios_Prestamos(models.Model):
         on_delete=models.PROTECT,
         help_text="Comentario estandarizado del catálogo."
     )
-
+    
     creado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         editable=False,
-        help_text="Usuario que registró el comentario."
+        null=True,  # ← Permitir temporalmente null
+        blank=True,
+        help_text="Usuario que registró el comentario." 
     )
-
-
-    # Propiedades para acceder a campos del catálogo (solo lectura)
-    @property
-    def operacion_id(self):
-        return self.comentario_catalogo.operacion_id if self.comentario_catalogo else None
-
-    @property
-    def evento_id(self):
-        return self.comentario_catalogo.evento_id if self.comentario_catalogo else None
-
-    @property
-    def prestamo_id(self):
-        return self.prestamo.prestamo_id if self.prestamo else None
-
-    @property
-    def comentario_id(self):
-        return self.comentario_catalogo_id
-
-    class Meta:
-        verbose_name = "Comentario de Préstamo"
-        verbose_name_plural = "Comentarios de Préstamos"
-        ordering = ['-fecha_comentario']
-
-    def __str__(self):
-        return f"Comentario {self.numero_comentario} - Préstamo {self.prestamo_id}"
-
+    
     def save(self, *args, **kwargs):
+        # Si es nuevo y no tiene usuario → asignar el usuario actual
+        if not self.pk and not self.creado_por:
+            # Solo funciona si hay un request (admin, vistas, etc.)
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            # Intenta obtener del kwargs (usado por admin inline)
+            user = kwargs.pop('user', None)
+            if user and isinstance(user, User):
+                self.creado_por = user
+            elif hasattr(self, '_current_user'):  # fallback
+                self.creado_por = self._current_user
+
         # Bloquear modificación después de creado
         if self.pk:
-            raise ValueError("❌ No se permiten modificaciones en comentarios ya creados.")
+            original = Comentarios_Prestamos.objects.get(pk=self.pk)
+            if original.creado_por != self.creado_por:
+                raise ValueError("No se puede modificar el usuario creador.")
+        
         super().save(*args, **kwargs)
-
-    def delete(self, *args, **kwargs):
-        # Bloquear eliminación
-        raise ValueError("❌ No se permite eliminar comentarios.")
+ 
+        
 #14--------------------------------------------------------------------------------------*
 # appfinancia/models.py
 #from django.db import models
 #from django.core.exceptions import ValidationError
 #from decimal import Decimal
-
 class Politicas(models.Model):
     edad_min = models.PositiveSmallIntegerField(
         default=18,
@@ -1165,7 +1063,7 @@ class Prestamos(models.Model):
 from django.db import models
 class Historia_Prestamos(models.Model):
     ESTADO_CHOICES = [
-        ('PENDIENTE', 'Pendiente'),
+        ('A DESEMBOLSAR', 'A desembolsar'),
         ('PAGADO', 'Pagado'),
         ('CANCELADO', 'Cancelado'),
         ('MOROSO', 'Moroso'),
@@ -1187,7 +1085,7 @@ class Historia_Prestamos(models.Model):
     usuario = models.CharField(max_length=15)
     # --- Campos nuevos ---
     numero_cuota = models.IntegerField(null=True, blank=True, help_text="Número de cuota a la que pertenece")
-    estado = models.CharField(max_length=10, choices=ESTADO_CHOICES, default='PENDIENTE')
+    estado = models.CharField(max_length=14, choices=ESTADO_CHOICES, default='PENDIENTE')
 
     def detalle_breve(self):
         return f"{self.prestamo_id} - {self.numero_cuota} - {self.concepto_id} - {self.fecha_vencimiento} - {self.monto_transaccion:,.2f}"

@@ -300,51 +300,71 @@ class ClientesAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
 #10---------------------------------------------------------------------------------------*
-#from .models import Desembolsos
-# admin.py
-#from django.contrib import admin
-from .models import Desembolsos
+#DESEMBOLSOS Y COMENTARIOS_PRESTAMOS
+#-----------------------------------------------------------------------------------------*    
+# appfinancia/admin.py
+
+from django.contrib import admin
+from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
+from django.utils.html import format_html
+from django.core.exceptions import ValidationError
+
+from .models import Desembolsos, Comentarios_Prestamos
 
 
+# ===================================================================
+# INLINE DE COMENTARIOS
+# ===================================================================
 class ComentarioInline(admin.TabularInline):
     model = Comentarios_Prestamos
     extra = 1
-    fields = ['comentario_catalogo', 'fecha_comentario', 'creado_por']
-    readonly_fields = ['fecha_comentario', 'creado_por']
+    readonly_fields = (
+        #'numero_comentario',
+        #'comentario_catalogo',
+        'fecha_comentario',
+        'creado_por',
+    )
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "comentario_catalogo":
             kwargs["queryset"] = Comentarios.objects.filter(estado='HABILITADO')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
-    
 
+    # Solo permitir añadir comentarios cuando el desembolso ya está guardado
+    '''
+    def has_add_permission(self, request, obj=None):
+        return obj is not None and obj.pk is not None
+
+    def has_change_permission(self, request, obj=None):
+        return True
+
+    def has_delete_permission(self, request, obj=None):
+        return True
+    '''
+# ===================================================================
+# ADMIN PRINCIPAL DE DESEMBOLSOS
+# ===================================================================
 @admin.register(Desembolsos)
 class DesembolsosAdmin(admin.ModelAdmin):
     list_display = (
-        'prestamo_id', 'cliente_id', 'asesor_id', 'aseguradora_id',
-        'valor', 'fecha_formateada',
-        'estado'
+        'prestamo_id',
+        'cliente_id_display',
+        'valor_formatted',
+        'estado_colored',
+        'fecha_desembolso',
     )
-    search_fields = (
-        'prestamo_id', 'cliente_id', 'asesor_id'
-    )
-    list_filter = (
-        'estado', 'tiene_fee', 'fecha_desembolso', 'aseguradora_id'
-    )
+    list_filter = ('estado',)
+    search_fields = ('prestamo_id', 'cliente_id__cliente_id', 'cliente_id__nombres')
     ordering = ('-fecha_desembolso',)
-    readonly_fields = (
-        'prestamo_id', 'fecha_vencimiento', 'fecha_creacion'  #,'estado'
-    )
-    #--------------------------------
-    actions = ['procesar_desembolsos_pendientes']   #<-------
-    #--------------------------------
-    list_per_page = 14
-    # 3. Método personalizado para mostrar la fecha en formato yyyy-mm-dd
-    def fecha_formateada(self, obj):
-        return obj.fecha_creacion.strftime('%Y-%m-%d')
-    fecha_formateada.short_description = 'Fecha'  # Nombre que aparece en el encabezado
-    fecha_formateada.admin_order_field = 'fecha'  # Permite ordenar por este campo
-    #--------------------------------
+    inlines = [ComentarioInline]
+    exclude = ('valor_cuota_mensual',)
+
+    # Campos siempre de solo lectura
+    readonly_fields_base = ('prestamo_id', 'fecha_vencimiento', 'fecha_creacion')
+
+    # ------------------------------------------------------------------
+    # Diseño del formulario
+    # ------------------------------------------------------------------
     fieldsets = (
         ('Identificación', {
             'fields': ('prestamo_id', 'cliente_id', 'asesor_id', 'aseguradora_id', 'vendedor_id')
@@ -353,84 +373,102 @@ class DesembolsosAdmin(admin.ModelAdmin):
             'fields': (
                 'tipo_tasa', 'tasa',
                 'valor', 'valor_cuota_1', 'numero_transaccion_cuota_1',
-                'valor_cuota_mensual', 'valor_seguro_mes', 'tiene_fee'
+                'valor_seguro_mes', 'tiene_fee'
             )
         }),
         ('Condiciones', {
             'fields': ('dia_cobro', 'plazo_en_meses', 'fecha_desembolso', 'fecha_vencimiento')
         }),
-        ('Estado', {
+        ('Estado y Auditoría', {
             'fields': ('estado', 'fecha_creacion')
         }),
     )
-    
-    #funcion para los comentarios 2025/11/17
-    def change_view(self, request, object_id, form_url='', extra_context=None):
-        extra_context = extra_context or {}
-        # Pasar comentarios HABILITADOS al template
-        extra_context['comentarios_habilitados'] = Comentarios.objects.filter(estado='HABILITADO')
-        return super().change_view(request, object_id, form_url, extra_context)
-   # Fin
 
+    # ------------------------------------------------------------------
+    # Columnas con formato bonito
+    # ------------------------------------------------------------------
+    def cliente_id_display(self, obj):
+        return f"{obj.cliente_id.cliente_id} - {obj.cliente_id}"
+    cliente_id_display.short_description = "Cliente"
+
+    def valor_formatted(self, obj):
+        return f"${obj.valor:,.0f}"
+    valor_formatted.short_description = "Valor"
+
+    def estado_colored(self, obj):
+        colores = {
+            'ELABORACION': '#3498db',
+            'A_DESEMBOLSAR': '#e67e22',
+            'DESEMBOLSADO': '#27ae60',
+            'ANULADO': '#c0392b',
+        }
+        textos = {
+            'ELABORACION': 'En Elaboración',
+            'A_DESEMBOLSAR': 'A Desembolsar',
+            'DESEMBOLSADO': 'Desembolsado',
+            'ANULADO': 'Anulado',
+        }
+        color = colores.get(obj.estado, '#7f8c8d')
+        texto = textos.get(obj.estado, obj.estado)
+        return format_html('<b style="color:{};">{}</b>', color, texto)
+    estado_colored.short_description = "Estado"
+
+    # ------------------------------------------------------------------
+    # Control de campos readonly según estado
+    # ------------------------------------------------------------------
     def get_readonly_fields(self, request, obj=None):
-        if obj:  # Si ya existe
-            #return self.readonly_fields + ('cliente', 'asesor', 'aseguradora', 'vendedor', 'tipo_tasa')
-            return self.readonly_fields + ('prestamo_id', 'cliente_id', 'fecha_creacion')
-        return self.readonly_fields
+        if obj is None:  # Creación
+            return self.readonly_fields_base
+        if obj.estado == 'ELABORACION':
+            return self.readonly_fields_base
+        # Otros estados: todo bloqueado (excepto comentarios)
+        return [f.name for f in self.model._meta.fields if f.name != 'id']
+
+    # ------------------------------------------------------------------
+    # Control de opciones de estado en el formulario
+    # ------------------------------------------------------------------
+    def formfield_for_choice_field(self, db_field, request, **kwargs):
+        if db_field.name == "estado":
+            object_id = request.resolver_match.kwargs.get('object_id')
+            if object_id:  # Edición
+                kwargs["choices"] = [
+                    ('ELABORACION', 'En Elaboración'),
+                    ('A_DESEMBOLSAR', 'A Desembolsar'),
+                ]
+            else:  # Creación
+                kwargs["choices"] = [('ELABORACION', 'En Elaboración')]
+        return super().formfield_for_choice_field(db_field, request, **kwargs)
+
+    # ------------------------------------------------------------------
+    # Acciones masivas
+    # ------------------------------------------------------------------
+    actions = ['pasar_a_desembolsado', 'anular']
+
+    def pasar_a_desembolsado(self, request, queryset):
+        updated = queryset.filter(estado='A_DESEMBOLSAR').update(estado='DESEMBOLSADO')
+        self.message_user(request, f"{updated} desembolso(s) pasado(s) a DESEMBOLSADO.")
+    pasar_a_desembolsado.short_description = "Pasar a DESEMBOLSADO"
+
+    def anular(self, request, queryset):
+        updated = queryset.exclude(estado='ANULADO').update(estado='ANULADO')
+        self.message_user(request, f"{updated} desembolso(s) anulado(s).")
+    anular.short_description = "Anular"
+
+    # ------------------------------------------------------------------
+    # Seguridad
+    # ------------------------------------------------------------------
+    def has_delete_permission(self, request, obj=None):
+        return False  # Nadie puede borrar desembolsos
 
     def save_model(self, request, obj, form, change):
-        obj.full_clean()
-        super().save_model(request, obj, form, change)
-
-    #2025-11-17  para comentarios 8:37pm +++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path(
-                '<int:object_id>/agregar-comentario/',
-                self.admin_site.admin_view(self.agregar_comentario_view),
-                name='agregar-comentario-desembolso',
-            ),
-        ]
-        return custom_urls + urls
-
-    def agregar_comentario_view(self, request, object_id):
-        desembolso = get_object_or_404(Desembolsos, pk=object_id)
-
-        if request.method == 'POST':
-            form = ComentarioPrestamoForm(request.POST)
-            if form.is_valid():
-                comentario = form.save(commit=False)
-                comentario.prestamo = desembolso
-                comentario.creado_por = request.user
-                comentario.save()
-                # Redirigir de vuelta al formulario de edición
-                url = reverse('admin:appfinancia_desembolsos_change', args=[object_id])
-                return HttpResponseRedirect(url)
-
-        else:
-            form = ComentarioPrestamoForm()
-
-        context = {
-            'desembolso': desembolso,
-            'form': form,
-            'title': 'Agregar Comentario',
-        }
-        return TemplateResponse(request, 'admin/appfinancia/desembolsos/agregar_comentario.html', context)
-
-    def change_view(self, request, object_id, form_url='', extra_context=None):
-        extra_context = extra_context or {}
-
-        desembolso = self.get_object(request, object_id)
-        if desembolso:
-            form = ComentarioPrestamoForm()
-            extra_context['comentario_form'] = form
-            extra_context['desembolso'] = desembolso
-
-        return super().change_view(request, object_id, form_url, extra_context)
-
-
+        try:
+            obj.full_clean()
+            super().save_model(request, obj, form, change)
+        except ValidationError as e:
+            self.message_user(request, f"Error al guardar: {e}", level='error')
+            
+    
+#Fin Clase de Desembolso-----------------------------------------------------------------*
 
 
     #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -796,7 +834,7 @@ class PrestamosAdmin(admin.ModelAdmin):
             'fields': (
                 'tipo_tasa', 'tasa',
                 'valor', 'valor_cuota_1', 'numero_transaccion_cuota_1',
-                'valor_cuota_mensual', 'valor_seguro_mes', 'tiene_fee'
+                'valor_seguro_mes', 'tiene_fee'
             )
         }),
         ('Condiciones', {
