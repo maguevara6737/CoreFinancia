@@ -1,0 +1,142 @@
+# appfinancia/management/commands/reportar_devengamiento.py
+# forma de uso para solo emitir totales por la consola:
+#        python manage.py reportar_devengamiento 2025-09-01 2025-09-30 
+#Con total + detalle, muestra por consola
+#        python manage.py reportar_devengamiento 2025-09-01 2025-09-30 --detalle
+#para csv:
+#python manage.py reportar_devengamiento 2025-09-01 2025-09-30 --detalle --csv /ruta/devengamiento.csv
+#
+#python manage.py reportar_devengamiento 2025-09-01 2025-09-30 --detalle --csv devengamiento_sep2025.csv
+#
+# appfinancia/management/commands/reportar_devengamiento.py
+
+import csv
+import os
+from django.core.management.base import BaseCommand
+from django.core.exceptions import ValidationError
+from datetime import datetime, date
+from appfinancia.utils import total_intereses_por_periodo
+
+
+class Command(BaseCommand):
+    help = 'Reporta el devengamiento (causación) de intereses en un periodo dado, incluyendo ajustes.'
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            'fecha_inicio',
+            type=str,
+            help='Fecha de inicio en formato YYYY-MM-DD'
+        )
+        parser.add_argument(
+            'fecha_fin',
+            type=str,
+            help='Fecha de fin en formato YYYY-MM-DD'
+        )
+        parser.add_argument(
+            '--detalle',
+            action='store_true',
+            help='Mostrar desglose detallado por préstamo y periodo en consola'
+        )
+        parser.add_argument(
+            '--csv',
+            type=str,
+            help='Ruta del archivo CSV de salida (ej. reporte_devengamiento.csv)'
+        )
+
+    def handle(self, *args, **options):
+        try:
+            fecha_inicio = datetime.strptime(options['fecha_inicio'], '%Y-%m-%d').date()
+            fecha_fin = datetime.strptime(options['fecha_fin'], '%Y-%m-%d').date()
+
+            if fecha_inicio > fecha_fin:
+                self.stderr.write(
+                    self.style.ERROR("❌ La fecha de inicio no puede ser posterior a la fecha de fin.")
+                )
+                return
+        except ValueError:
+            self.stderr.write(
+                self.style.ERROR("❌ Formato de fecha inválido. Use YYYY-MM-DD.")
+            )
+            return
+
+        self.stdout.write(
+            self.style.SUCCESS(f"🔍 Calculando devengamiento desde {fecha_inicio} hasta {fecha_fin}...")
+        )
+
+        try:
+            resultado = total_intereses_por_periodo(fecha_inicio, fecha_fin)
+        except Exception as e:
+            self.stderr.write(self.style.ERROR(f"❌ Error al calcular devengamiento: {e}"))
+            return
+
+        total_intereses = resultado['total_intereses']
+        total_ajustes = resultado['total_ajustes']
+        total_neto = total_intereses + total_ajustes
+
+        self.stdout.write("")
+        self.stdout.write(self.style.SUCCESS(f"✅ TOTAL INTERESES CAUSADOS: ${total_intereses:,.2f}"))
+        self.stdout.write(self.style.WARNING(f"⚠️  TOTAL AJUSTES DE INTERÉS: ${total_ajustes:,.2f}"))
+        self.stdout.write(self.style.SUCCESS(f"💰 TOTAL NETO (Interés + Ajustes): ${total_neto:,.2f}"))
+        self.stdout.write("")
+
+        # === Opción: Mostrar detalle en consola ===
+        if options['detalle']:
+            detalle = resultado['detalle_por_prestamo']
+            if not detalle:
+                self.stdout.write("ℹ️  No se encontraron préstamos activos con devengamiento en el periodo.")
+            else:
+                for prestamo_id, periodos in detalle.items():
+                    self.stdout.write(f"\nPrestamo ID: {prestamo_id}")
+                    self.stdout.write("-" * 100)
+                    for p in periodos:
+                        self.stdout.write(
+                            f"  {p['periodo_inicio']} a {p['periodo_fin']} "
+                            f"({p['dias']} días) | "
+                            f"Saldo: ${p['saldo_inicial']:,.2f} | "
+                            f"Tasa: {p['tasa']:.4f}% | "
+                            f"Interés: ${p['interes_causado']:,.2f} | "
+                            f"Ajuste: ${p['ajuste_intrs_causacion']:,.2f} "
+                            f"[{p['tipo_evento']}]"
+                        )
+                self.stdout.write("\n✔️ Reporte detallado finalizado.")
+
+        # === Opción: Exportar a CSV ===
+        if options['csv']:
+            csv_path = options['csv']
+            try:
+                with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+                    writer = csv.writer(csvfile)
+                    # Cabecera
+                    writer.writerow([
+                        'prestamo_id',
+                        'periodo_inicio',
+                        'periodo_fin',
+                        'dias',
+                        'saldo_inicial',
+                        'tasa',
+                        'interes_causado',
+                        'ajuste_intrs_causacion',
+                        'tipo_evento'
+                    ])
+                    # Datos
+                    for prestamo_id, periodos in resultado['detalle_por_prestamo'].items():
+                        for p in periodos:
+                            writer.writerow([
+                                prestamo_id,
+                                p['periodo_inicio'],
+                                p['periodo_fin'],
+                                p['dias'],
+                                f"{p['saldo_inicial']:.2f}",
+                                f"{p['tasa']:.6f}",
+                                f"{p['interes_causado']:.2f}",
+                                f"{p['ajuste_intrs_causacion']:.2f}",
+                                p['tipo_evento']
+                            ])
+                self.stdout.write(
+                    self.style.SUCCESS(f"✅ Reporte exportado a: {os.path.abspath(csv_path)}")
+                )
+            except Exception as e:
+                self.stderr.write(self.style.ERROR(f"❌ Error al guardar CSV: {e}"))
+
+        self.stdout.write(self.style.SUCCESS("✔️ Proceso completado."))
+        

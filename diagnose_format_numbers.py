@@ -7,8 +7,13 @@ from pathlib import Path
 # Detectar la raíz del proyecto
 BASE_DIR = Path(__file__).resolve().parent
 SETTINGS_PATH = BASE_DIR / "CoreFinancia" / "settings.py"
+<<<<<<< HEAD
 JS_PATH = BASE_DIR / "appfinancia" / "static" / "appfinancia" / "js" / "number-format.js"
 #JS_PATH = BASE_DIR / "corefinancia_pedro" / "static" / "appfinancia" / "js" / "number-format.js"
+=======
+#JS_PATH = BASE_DIR / "appfinancia" / "static" / "appfinancia" / "js" / "number-format.js"
+JS_PATH = BASE_DIR / "corefinancia_pedro" / "static" / "appfinancia" / "js" / "number-format.js"
+>>>>>>> a06f387c9eb262c1897306ac985884046b98bdf6
 ADMIN_URL = "http://72.60.172.191:9000/admin/appfinancia/desembolsos/add/"
 
 print("🔍 Diagnóstico de formato numérico: coma (miles) y punto (decimal)")

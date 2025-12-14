@@ -90,22 +90,24 @@
         <div class="info-cliente">
             {% if prestamo.prestamo_id %}
                 <div><span class="label">Préstamo ID:</span> {{ prestamo.prestamo_id.prestamo_id }}</div>
-                <div><span class="label">Cliente:</span> {{ prestamo.prestamo_id.cliente_id.nombre }} {{ prestamo.prestamo_id.cliente_id.apellido }}</div>
-                <div><span class="label">ID Cliente:</span> {{ prestamo.prestamo_id.cliente_id.cliente_id }}</div>
+                <div><span class="label"> </span> {{ prestamo.prestamo_id.cliente_id.nombre }} {{ prestamo.prestamo_id.cliente_id.apellido }}</div>
+                <div><span class="label">ID:</span> {{ prestamo.prestamo_id.cliente_id.cliente_id }}</div>
+                <!-- NUEVOS DATOS -->
+                <div><span class="label">Desembolso:</span> {{ fecha_desembolso|date:"Y-m-d" }}</div>
+                <div><span class="label">Vcto. Final:</span> {{ fecha_vencimiento_final|date:"Y-m-d" }}</div>
+                <div><span class="label">Tasa Mensual:</span> {{ tasa_mensual|floatformat:4 }}%</div>
+                <div><span class="label">Cuotas:</span> {{ plazo_en_meses }}</div>
+                <div><span class="label">Valor:</span> ${{ saldo_prestamo|floatformat:2 }}</div>
             {% else %}
                 <div><span class="label">Préstamo ID:</span> <span style="color: red;">(Sin desembolso asociado)</span></div>
-                <div><span class="label">Cliente:</span> <span style="color: red;">(No disponible)</span></div>
-                <div><span class="label">ID Cliente:</span> <span style="color: red;">(No disponible)</span></div>
+                <!-- ... otros campos ... -->
             {% endif %}
         </div>
-        <!-- Agrega esta línea para depurar -->
-        <p>DEBUG: prestamo.pk = {{ prestamo.pk }}, prestamo.prestamo_id = {{ prestamo.prestamo_id }}, prestamo.prestamo_id.id = {{ prestamo.prestamo_id.id }}</p>
+        <!-- Botón de exportar -->
         {% if prestamo.prestamo_id %}
-            <a class="boton-exportar" href="{% url 'exportar_historia_xlsx' prestamo.prestamo_id.pk %}" target="_blank">
+            <a class="boton-exportar" href="{% url 'exportar_historia_xlsx' prestamo.pk %}" target="_blank">
                 📥 Exportar a Excel
             </a>
-        {% else %}
-            <p class="error">No se puede exportar: préstamo no tiene desembolso asociado.</p>
         {% endif %}
     </div>
 

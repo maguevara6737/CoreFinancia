@@ -1,0 +1,207 @@
+{% extends "admin/base_site.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="module">
+    <h2>Balance de Operaciones</h2>
+    
+    {% if resultado_pantalla %}
+        <div style="margin: 20px 0;">
+            <h3>Fecha: {{ resultado_pantalla.fecha_corte|date:"Y-m-d" }}</h3>
+        </div>
+        
+        <!-- SALDOS DE CAPITAL -->
+        <div style="margin: 30px 0;">
+            <h4>SALDOS DE CAPITAL</h4>
+            <table style="width: 100%; border-collapse: collapse; margin: 15px 0; table-layout: fixed;">
+                <colgroup>
+                    <col style="width: 60%;">
+                    <col style="width: 20%;">
+                    <col style="width: 20%;">
+                </colgroup>
+                <thead>
+                    <tr style="background-color: #f5f5f5;">
+                        <th style="text-align: left; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Concepto</th>
+                        <th style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Cant.</th>
+                        <th style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Valor</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="height: 40px;">
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Saldo Anterior</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.saldo_anterior.cant }}</td>
+                        <td style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.saldo_anterior.valor }}</td>
+                    </tr>
+                    <tr style="height: 40px; background-color: #e8f4ff;">
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">+ Desembolsados</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.desembolsos_hoy.cant }}</td>
+                        <td style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.desembolsos_hoy.valor }}</td>
+                    </tr>
+                    <tr style="height: 40px;">
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">- Pagos</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.pagos_hoy.cant }}</td>
+                        <td style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.pagos_hoy.valor }}</td>
+                    </tr>
+                    <tr style="height: 40px; background-color: #e8f4ff;">
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">- Finalizados</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.finalizados.cant }}</td>
+                        <td style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.finalizados.valor }}</td>
+                    </tr>
+                    <tr style="height: 40px; font-weight: bold; background-color: #d4edda;">
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">= Saldo Actual</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.saldo_actual.cant }}</td>
+                        <td style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.saldo_actual.valor }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- TOTALES POR CONCEPTO MOVIMIENTO -->
+        <div style="margin: 30px 0;">
+            <h4>Totales por concepto Movimiento</h4>
+            <table style="width: 100%; border-collapse: collapse; margin: 15px 0; table-layout: fixed;">
+                <colgroup>
+                    <col style="width: 60%;">
+                    <col style="width: 20%;">
+                    <col style="width: 20%;">
+                </colgroup>
+                <thead>
+                    <tr style="background-color: #f5f5f5;">
+                        <th style="text-align: left; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Concepto</th>
+                        <th style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Cant</th>
+                        <th style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Valor</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="height: 40px;">
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Desembolsos pendientes hoy</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.desembolsos_pendientes_hoy.cant }}</td>
+                        <td style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.desembolsos_pendientes_hoy.valor }}</td>
+                    </tr>
+                    <tr style="height: 40px;">
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Pago por transferencia PSE</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.pago_pse.cant }}</td>
+                        <td style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.pago_pse.valor }}</td>
+                    </tr>
+                    <tr style="height: 40px; background-color: #fff3cd;">
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">INTERESES PAGADOS</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.intereses_pagados.cant }}</td>
+                        <td style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.intereses_pagados.valor }}</td>
+                    </tr>
+                    <tr style="height: 40px;">
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">SEGURO</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.seguro.cant }}</td>
+                        <td style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.seguro.valor }}</td>
+                    </tr>
+                    <tr style="height: 40px; background-color: #fff3cd;">
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">FEE</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.fee.cant }}</td>
+                        <td style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.fee.valor }}</td>
+                    </tr>
+                    <tr style="height: 40px;">
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Cuotas pendientes</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.cuotas_pendientes.cant }}</td>
+                        <td style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.cuotas_pendientes.valor }}</td>
+                    </tr>
+                    <tr style="height: 40px; background-color: #f8d7da;">
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Pagos pendientes</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.pagos_pendientes.cant }}</td>
+                        <td style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.pagos_pendientes.valor }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- OPERACIONES ADMINISTRATIVAS -->
+        <div style="margin: 30px 0;">
+            <h4>Operaciones Administrativas</h4>
+            <table style="width: 100%; border-collapse: collapse; margin: 15px 0; table-layout: fixed;">
+                <colgroup>
+                    <col style="width: 60%;">
+                    <col style="width: 20%;">
+                    <col style="width: 20%;">
+                </colgroup>
+                <tbody>
+                    <tr style="height: 40px;">
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Clientes nuevos</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ resultado_pantalla.clientes_nuevos.cant }}</td>
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;"></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- BOTÓN EXPORTAR -->
+        <div style="margin: 20px 0; text-align: center;">
+            <form method="post" style="display: inline;">
+                {% csrf_token %}
+                {{ form.fecha_corte }}
+                <input type="hidden" name="tipo_reporte" value="excel">
+                <button type="submit" class="default" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">
+                    Exportar a Excel
+                </button>
+            </form>
+        </div>
+        
+    {% else %}
+        <!-- FORMULARIO INICIAL -->
+        <div class="form-container">
+            <form method="post">
+                {% csrf_token %}
+                <fieldset class="module aligned">
+                    <div class="form-row">
+                        {{ form.fecha_corte.label_tag }}
+                        {{ form.fecha_corte }}
+                        {% if form.fecha_corte.errors %}
+                            <div class="error">{{ form.fecha_corte.errors }}</div>
+                        {% endif %}
+                    </div>
+                </fieldset>
+                <div class="submit-row">
+                    <input type="submit" value="Consultar Totales" class="default" name="_consultar_pantalla">
+                    <input type="hidden" name="tipo_reporte" value="pantalla">
+                </div>
+            </form>
+        </div>
+    {% endif %}
+</div>
+
+<style>
+.form-container {
+    max-width: 500px;
+    margin: 20px auto;
+    padding: 20px;
+    background: #f9f9f9;
+    border-radius: 8px;
+}
+.form-row {
+    margin-bottom: 15px;
+}
+.form-row label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+.submit-row {
+    text-align: center;
+    margin-top: 20px;
+}
+.submit-row input[type="submit"] {
+    padding: 10px 25px;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.submit-row input[type="submit"]:hover {
+    background: #0056b3;
+}
+.error {
+    color: #dc3545;
+    font-size: 0.875rem;
+    margin-top: 5px;
+}
+</style>
+{% endblock %}

@@ -1,0 +1,12 @@
+2025-12-11 16:30:56,722 - INFO - === INICIANDO MIGRACIÓN ===
+2025-12-11 16:30:56,726 - INFO - === CARGANDO CLIENTES ===
+2025-12-11 16:31:20,609 - INFO - Clientes: 6577 procesados, 0 errores
+2025-12-11 16:31:20,609 - INFO - === CARGANDO PRÉSTAMOS ===
+2025-12-11 16:31:28,396 - WARNING - Clave duplicada: 1716. Se procesará solo la primera.
+2025-12-11 16:31:58,447 - INFO - === CARGANDO PAGOS ===
+2025-12-11 16:32:52,594 - INFO - === GENERANDO HISTORIA PRESTAMOS ===
+2025-12-11 16:33:10,638 - INFO - === APLICANDO PAGOS CONCILIADOS ===
+2025-12-11 16:38:47,606 - INFO - === RESUMEN FINAL ===
+Clientes: procesados=6577, errores=0
+Préstamos: leídos=3528, grabados=3527, errores=0
+Montos: leído=$13,091,741,177.00, grabado=$13,091,741,177.00, errores=$0.00
