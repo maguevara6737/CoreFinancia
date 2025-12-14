@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+ 
 
 urlpatterns = [
     path('login/', views.login_view, name='login'),
@@ -7,7 +8,11 @@ urlpatterns = [
     path('', views.home_view, name='home'),
     #comentarios prestamos 225/11/17
     #no incluir rutas que incluyan /appfinancia/  ni rutas generales del proyecto. Solo especificas de prestamamos, plan pagos,etc
+    #path('admin/consulta-causacion/', consulta_causacion_view, name='consulta_causacion'),
     path('admin/desembolso/<int:prestamo_id>/add-comentario/', views.add_comentario_prestamo, name='add_comentario_prestamo'),
-    path('admin/plan-pagos/<int:prestamo_id>/', views.plan_de_pagos_view, name='plan_pagos'),
-    path('admin/exportar-historia/<int:prestamo_id>/', views.exportar_historia_prestamo_xlsx, name='exportar_historia_xlsx'),
+    path('plan-pagos/<int:prestamo_id>/', views.plan_de_pagos_view, name='plan_pagos'),
+    path('admin/exportar-historia/<int:prestamo_id>/', views.exportar_historia_xlsx, name='exportar_historia_xlsx'),                      
+    path('estado_cuenta/<int:prestamo_id>/', views.estado_cuenta_view, name='estado_cuenta'),
+    path('estado_cuenta/<int:prestamo_id>/excel/', views.estado_cuenta_view, name='estado_cuenta_excel'),
 ]
+

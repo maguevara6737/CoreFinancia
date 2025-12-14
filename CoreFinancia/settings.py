@@ -153,5 +153,6 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 #Para el login 2025.10.28
+LOGIN_URL = '/admin/login/'   #2025-12-05
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/login/'

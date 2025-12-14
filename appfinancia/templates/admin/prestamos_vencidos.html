@@ -1,0 +1,95 @@
+{% extends "admin/base_site.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="module">
+    <h2>Reporte de Préstamos Vencidos a Hoy</h2>
+
+    {% if resultado_pantalla %}
+        <div style="margin: 20px 0;">
+            <h3>Fecha de corte: {{ resultado_pantalla.fecha_hoy|date:"Y-m-d" }}</h3>
+            <p><strong>Total de préstamos vencidos:</strong> {{ resultado_pantalla.total_registros }}</p>
+        </div>
+
+        <div style="margin: 20px 0; max-height: 600px; overflow: auto;">
+            <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.95em;">
+                <colgroup>
+                    <col style="width: 8%;">
+                    <col style="width: 20%;">
+                    <col style="width: 12%;">
+                    <col style="width: 18%;">
+                    <col style="width: 8%;">
+                    <col style="width: 8%;">
+                    <col style="width: 14%;">
+                    <col style="width: 12%;">
+                </colgroup>
+                <thead>
+                    <tr style="background-color: #f5f5f5;">
+                        <th style="text-align: left; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Nro. Prestamo</th>
+                        <th style="text-align: left; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Nombre y apellidos</th>
+                        <th style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Teléfono</th>
+                        <th style="text-align: left; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Email</th>
+                        <th style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Cant. Cuotas</th>
+                        <th style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Días Atraso</th>
+                        <th style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Valor Total</th>
+                        <th style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">Fec. Venc.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in resultado_pantalla.resultados %}
+                    <tr style="height: 40px;">
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ r.prestamo_id }}</td>
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ r.nombre_cliente }}</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ r.telefono }}</td>
+                        <td style="padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ r.email }}</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ r.cant_cuotas }}</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ r.dias_atraso }}</td>
+                        <td style="text-align: right; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ r.valor_total }}</td>
+                        <td style="text-align: center; padding: 10px; border: 1px solid #ddd; vertical-align: middle;">{{ r.fecha_vencimiento|date:"Y-m-d" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 15px; border: 1px solid #ddd;">
+                            No hay préstamos vencidos a la fecha.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="text-align: center; margin: 20px 0;">
+            <form method="post" style="display: inline;">
+                {% csrf_token %}
+                <input type="hidden" name="tipo_reporte" value="excel">
+                <button type="submit" class="default" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">
+                    Exportar a Excel
+                </button>
+            </form>
+        </div>
+
+    {% else %}
+        <div class="form-container">
+            <form method="post">
+                {% csrf_token %}
+                <div style="text-align: center; margin: 30px 0;">
+                    <p>Este reporte muestra todos los préstamos con cuotas vencidas a la fecha de proceso actual.</p>
+                    <input type="submit" value="Generar Reporte" class="default" style="padding: 10px 25px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    <input type="hidden" name="tipo_reporte" value="pantalla">
+                </div>
+            </form>
+        </div>
+    {% endif %}
+</div>
+
+<style>
+.form-container {
+    max-width: 600px;
+    margin: 20px auto;
+    padding: 20px;
+    background: #f9f9f9;
+    border-radius: 8px;
+}
+</style>
+{% endblock %}
