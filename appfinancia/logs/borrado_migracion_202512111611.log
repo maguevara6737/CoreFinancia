@@ -1,0 +1,5 @@
+2025-12-11 16:11:04,696 - INFO - === INICIANDO BORRADO DE MIGRACIÓN (limpieza exhaustiva) ===
+2025-12-11 16:11:04,709 - INFO - 🔍 Préstamos en Migrados: 3527
+2025-12-11 16:11:04,784 - INFO - 🔍 Pagos marcados como 'MIGRACION': 24587
+2025-12-11 16:11:09,504 - INFO - ✅ Historia_Prestamos borrada: 45829 (por pago) + 37503 (por préstamo) = 83332
+2025-12-11 16:11:16,858 - INFO - === BORRADO COMPLETADO ===
