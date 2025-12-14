@@ -1,0 +1,41 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block content %}
+  <div class="app-fragmentacion">
+    <h1>{{ title }}</h1>
+
+    <h2>Pago Padre</h2>
+    <table>
+      <tr><th>Pago ID</th><td>{{ pago.pago_id }}</td></tr>
+      <tr><th>Prestamo</th><td>{{ pago.prestamo_id_real }}</td></tr>
+      <tr><th>Cliente</th><td>{{ pago.cliente_id_real }}</td></tr>
+      <tr><th>Nombre cliente</th><td>{{ pago.cliente_id_real.nombre }} {{ pago.cliente_id_real.apellido }}</td></tr>
+      <tr><th>Valor pago</th><td>{{ pago.valor_pago }}</td></tr>
+      <tr><th>Fecha pago</th><td>{{ pago.fecha_pago }}</td></tr>
+    </table>
+
+    <h2>Fragmentar a préstamos</h2>
+    <form method="post">{% csrf_token %}
+      {{ form.non_field_errors }}
+      <table>
+        {% for field in form %}
+          <tr>
+            <th>{{ field.label_tag }}</th>
+            <td>
+              {{ field.errors }}
+              {{ field }}
+              {% if field.help_text %}
+                <p class="help">{{ field.help_text }}</p>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </table>
+
+      <div class="submit-row">
+        <input type="submit" value="Fragmentar" class="default">
+        <a href="{% url 'admin:appfinancia_inbox_pagosdetalle_changelist' %}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

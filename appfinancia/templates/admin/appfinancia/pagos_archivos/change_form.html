@@ -1,0 +1,25 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+{% block submit_buttons_bottom %}
+  {{ block.super }}
+  {% if show_upload_button %}
+    <div class="submit-row" style="margin-top:20px; padding:15px; background:#f8f9fa; border-radius:6px;">
+      <a href="#" id="btn-cargar-archivo" class="button"
+         style="background:#17a2b8; color:white; padding:10px 20px; border-radius:4px;">
+        📤 CARGAR ARCHIVO
+      </a>
+      <p class="help" style="margin-top:8px;">
+        Seleccione primero el <strong>Formato</strong>, luego use este botón para cargar su archivo de pagos.
+      </p>
+    </div>
+
+    <script>
+      document.getElementById('btn-cargar-archivo').addEventListener('click', function(e) {
+        e.preventDefault();
+        // 🔜 Aquí irá la lógica para abrir modal, subir archivo, etc.
+        alert('⚠️ Funcionalidad "Cargar Archivo" aún en desarrollo.\n\nPor favor, guarde primero el formato y nombre del archivo.');
+      });
+    </script>
+  {% endif %}
+{% endblock %}

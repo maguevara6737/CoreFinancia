@@ -1,0 +1,46 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+
+<h1 style="margin-bottom:20px;">Fragmentación de Pagos</h1>
+
+<div style="
+    background: #fff;
+    padding: 25px;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+    width: 520px;
+">
+
+    <p style="font-size:15px; margin-bottom:25px;">
+        Desde esta sección puede fragmentar un pago registrado en 
+        <strong>Historia de Préstamos</strong>.  
+        Ingrese el ID del pago que desea fragmentar.
+    </p>
+
+    <form method="get" action="/appfinancia/fragmentacion/ir/">
+        <label style="font-weight:bold;">ID del Pago (Historia_Prestamos):</label>
+        <input type="number" name="id" required
+               style="
+                   width: 100%;
+                   padding: 8px 10px;
+                   border: 1px solid #ccc;
+                   border-radius: 4px;
+                   margin-top: 5px;
+                   margin-bottom: 20px;
+               ">
+
+        <button type="submit" class="default" style="width:100%; padding:10px;">
+            Buscar Pago
+        </button>
+    </form>
+
+    <p style="margin-top:25px;">
+        También puede regresar al  
+        <a href="/admin/">Panel Administrativo</a>.
+    </p>
+
+</div>
+
+{% endblock %}

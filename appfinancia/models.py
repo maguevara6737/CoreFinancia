@@ -12,6 +12,7 @@ from datetime import datetime
 
 from .utils import get_politicas, get_next_prestamo_id
 
+
 # Create your models here.
 #1---------------------------------------------------------------------------------------*
 class Tipos_Identificacion(models.Model):
@@ -515,7 +516,9 @@ class Desembolsos(models.Model):
         ('SI', 'Sí'),
         ('NO', 'No'),
     ]
-
+    #Cargar la fecha de procesos del sistema CoreFinanza
+    #hoy = FechasSistemaHelper.get_fecha_proceso_actual()
+    
     # === CAMPOS CLAVE ===
     prestamo_id = models.BigIntegerField(
         primary_key=True,
@@ -547,6 +550,7 @@ class Desembolsos(models.Model):
     dia_cobro = models.PositiveSmallIntegerField(default=1, help_text="Día de cobro (1-30)")
     plazo_en_meses = models.PositiveSmallIntegerField(default=12)
     fecha_desembolso = models.DateField(default=timezone.now)
+    #fecha_desembolso = models.DateField(default=hoy)
     fecha_vencimiento = models.DateField(editable=False, null=True, blank=True)
     estado = models.CharField(max_length=14, choices=ESTADO_CHOICES, default='ELABORACION')
     fecha_creacion = models.DateTimeField(default=timezone.now, editable=False)
@@ -618,7 +622,9 @@ class Desembolsos(models.Model):
             errores['dia_cobro'] = "Día de cobro debe estar entre 1 y 30."
 
         # 7. Fecha de desembolso no futura
-        hoy = date.today()
+        from .utils import FechasSistemaHelper
+        #hoy = date.today()
+        hoy = FechasSistemaHelper.get_fecha_proceso_actual()
         if self.fecha_desembolso > hoy:
             errores['fecha_desembolso'] = "La fecha de desembolso no puede ser futura."
 
@@ -951,8 +957,13 @@ class Politicas(models.Model):
 #16--------------------------------------------------------------------------------------------------------
     
 class Prestamos(models.Model):
-    prestamo_id = models.ForeignKey('Desembolsos', on_delete=models.CASCADE)
-    cliente_id = models.ForeignKey('Clientes', on_delete=models.CASCADE)
+    prestamo_id = models.OneToOneField(          
+        'Desembolsos',
+        on_delete=models.CASCADE,
+        primary_key=True,
+        db_column='prestamo_id'
+    )
+    cliente_id = models.ForeignKey('Clientes', on_delete=models.CASCADE, to_field='cliente_id')
     asesor_id = models.ForeignKey('Asesores', on_delete=models.PROTECT, to_field='asesor_id')
     aseguradora_id = models.ForeignKey('Aseguradoras', on_delete=models.PROTECT, to_field='aseguradora_id', null=True, blank=True)
     vendedor_id = models.ForeignKey('Vendedores', on_delete=models.PROTECT, to_field='cod_venta_id', null=True, blank=True)
@@ -967,7 +978,6 @@ class Prestamos(models.Model):
     plazo_en_meses = models.PositiveSmallIntegerField(default=0)
     fecha_desembolso = models.DateField(null=True, blank=True)
     fecha_vencimiento = models.DateField(null=True, blank=True)
-
     SUSPENSION_INTRS_CHOICES = [
         ('SI', 'SI'),
         ('NO', 'NO'),
@@ -976,72 +986,48 @@ class Prestamos(models.Model):
         ('SI', 'SI'),
         ('NO', 'NO'),
     ]
-    suspender_causacion =  models.CharField(
+    suspender_causacion = models.CharField(
         max_length=2,
         choices=SUSPENSION_INTRS_CHOICES,
         help_text="Tiene suspendida la causacion intrs ('SI' o 'NO')."
     )
-    fecha_suspension_causacion =  models.DateField(null=True, blank=True)
-
-    revocatoria =  models.CharField(
+    fecha_suspension_causacion = models.DateField(null=True, blank=True)
+    revocatoria = models.CharField(
         max_length=2,
         choices=REVOCATORIA_CHOICES,
         help_text="Tiene Revocatoria ('SI' o 'NO')."
     )
-    fecha_revocatoria =  models.DateField(null=True, blank=True)
+    fecha_revocatoria = models.DateField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Prestamo"
         verbose_name_plural = "Prestamos"
 
     def __str__(self):
-        return f" {self.prestamo_id}"
+        return f"{self.prestamo_id.prestamo_id}"
 
-    #-------------------------------
-    # ✅ NUEVO MÉTODO: Obtiene el plan de pagos desde Historia_Prestamos y debe estar aqui en prestamos
+    # -------------------------------
+    # MÉTODOS EXISTENTES (sin cambios)
     def get_payment_schedule(self):
-        """
-        Devuelve el plan de pagos completo del préstamo como una lista de diccionarios.
-        Lee los registros de Historia_Prestamos con concepto_id='CUOTA'.
-        
-        Cada elemento tiene:
-        - numero_cuota: número de la cuota (1, 2, 3...)
-        - capital: abono a capital
-        - intereses: intereses causados
-        - seguro: valor del seguro mensual
-        - total_cuota: suma de capital + intereses + seguro
-        - fecha_vencimiento: fecha de vencimiento
-        - estado: 'PROYECTADO', 'PAGADO' o 'MOROSO' (basado en fecha actual)
-        
-        Solo devuelve cuotas (concepto_id='CUOTA').
-        """
         from .models import Historia_Prestamos, Conceptos_Transacciones
-
         try:
             concepto_cuota = Conceptos_Transacciones.objects.get(concepto_id="CUOTA")
         except Conceptos_Transacciones.DoesNotExist:
-            return []  # Si no existe el concepto, no hay cuotas
-
-        # Filtrar solo las cuotas asociadas a este préstamo
+            return []
         cuotas_qs = Historia_Prestamos.objects.filter(
             prestamo_id=self,
             concepto_id=concepto_cuota
-        ).order_by('numero_operacion')  # Ordenado por número de cuota
-
+        ).order_by('numero_operacion')
         today = timezone.now().date()
-
         schedule = []
         for cuota in cuotas_qs:
             total_cuota = cuota.abono_capital + cuota.intrs_ctes + cuota.seguro
-
-            # Determinar estado
             if cuota.fecha_vencimiento < today:
                 estado = 'MOROSO' if cuota.abono_capital > 0 else 'PROYECTADO'
             elif cuota.fecha_vencimiento == today:
                 estado = 'VENCE_HOY'
             else:
                 estado = 'PROYECTADO'
-
             schedule.append({
                 'numero_cuota': cuota.numero_operacion,
                 'capital': cuota.abono_capital,
@@ -1052,22 +1038,17 @@ class Prestamos(models.Model):
                 'estado': estado,
                 'fecha_proceso': cuota.fecha_proceso,
             })
-
         return schedule
-    
-    # Dentro de la clase Prestamos en models.py
+
     def get_total_cuotas(self):
-        # Número total de cuotas proyectadas.
         return len(self.get_payment_schedule())
 
     def get_paid_cuotas(self):
-        """Número de cuotas ya pagadas (abono_capital > 0 y fecha_vencimiento <= hoy)."""
         from .models import Historia_Prestamos, Conceptos_Transacciones
         try:
             concepto_cuota = Conceptos_Transacciones.objects.get(concepto_id="CUOTA")
         except Conceptos_Transacciones.DoesNotExist:
             return 0
-
         today = timezone.now().date()
         return Historia_Prestamos.objects.filter(
             prestamo_id=self,
@@ -1077,13 +1058,11 @@ class Prestamos(models.Model):
         ).count()
 
     def get_outstanding_balance(self):
-        """Saldo pendiente: suma de cuotas no pagadas (capital + intereses + seguro)"""
         schedule = self.get_payment_schedule()
         return sum(
             cuota['total_cuota'] for cuota in schedule
             if cuota['estado'] in ['PROYECTADO', 'VENCE_HOY', 'MOROSO']
         )
-    #-------------------------------
 
 
 
@@ -1109,18 +1088,19 @@ from decimal import Decimal # Añadido para manejo seguro
 
 class Historia_Prestamos(models.Model):
     ESTADO_CHOICES = [
-        ('A DESEMBOLSAR', 'A desembolsar'),
-        ('PAGADO', 'Pagado'),
+        ('PENDIENTE', 'Cuota Pendiente'),
+        ('PAGADA', 'Pagada'),
         ('CANCELADO', 'Cancelado'),
         ('MOROSO', 'Moroso'),
+        ('TRANSACCION', 'Transaccion'),  #2025-11-25  Miguel
     ]
 
     # Ajustamos el nombre del campo para que sea más claro, si es posible
     # prestamo = models.ForeignKey('Prestamos', on_delete=models.CASCADE) # Opción más clara
     prestamo_id = models.ForeignKey('Prestamos', on_delete=models.CASCADE) # Como está actualmente
-    fecha_efectiva = models.DateField()
+    fecha_efectiva = models.DateField(null=True, blank=True)
     fecha_proceso = models.DateField()
-    ordinal_interno = models.IntegerField()
+    ordinal_interno = models.IntegerField() 
     numero_operacion = models.PositiveIntegerField(default=1, help_text="secuencial de operacion")
     concepto_id = models.ForeignKey('Conceptos_Transacciones', on_delete=models.CASCADE)
     fecha_vencimiento = models.DateField()
@@ -1197,6 +1177,7 @@ class Historia_Prestamos(models.Model):
         super().save(*args, **kwargs)
 
 
+
  
 #18--------------------------------------------------------------------------------------------------------
 #2025-11-15 Elimino modelo Planpagos se integra con Historia_prestamos
@@ -1240,3 +1221,406 @@ class Movimientos(models.Model):
     fecha_valor_mvto = models.DateField(
         help_text="Fecha valor"
     )
+    
+
+#21---------------------------------------------------------------------------------------        
+#Pagos_Archivos: borrado 2025/12/11
+
+#22---------------------------------------------------------------------------------------
+class Pagos(models.Model):
+    TIPO_CUENTA_CHOICES = [
+        ('AHORROS', 'Ahorros'),
+        ('CORRIENTE', 'Corriente'),
+    ]
+
+    ESTADO_PAGO_CHOICES = [
+        ('Recibido', 'Recibido'),
+        ('pendiente', 'Pendiente'),
+        ('rechazado', 'Rechazado'),
+        ('conciliado', 'Conciliado'),
+        ('aplicado', 'Aplicado'),
+        ('reversado', 'Reversado'),
+        ('acreedores', 'Acreedores'),
+    ]
+
+    ESTADO_CONCILIACION_CHOICES = [
+        ('cliente o prestamo no existe', 'Cliente o préstamo no existe'),
+        ('prestamo_cancelado', 'Préstamo cancelado'),
+    ]
+
+    # Clave primaria
+    pago_id = models.BigAutoField(primary_key=True)
+
+    # ------------ AJUSTE 1: eliminar ForeignKey -----------------
+    # Antes era ForeignKey a Pagos_Archivos. Ahora es un índice repetible.
+    nombre_archivo_id = models.CharField(
+        max_length=200,
+        help_text="Identificador del archivo de origen (no es ForeignKey)",
+        db_index=True
+    )
+    # ----------------------------------------------------------------
+
+    fecha_carga_archivo = models.DateTimeField(default=timezone.now, editable=False)
+
+    # Datos bancarios
+    banco_origen = models.CharField(max_length=100, blank=True)
+    cuenta_bancaria = models.CharField(max_length=100, blank=True)
+    tipo_cuenta_bancaria = models.CharField(max_length=9, choices=TIPO_CUENTA_CHOICES, blank=True)
+    canal_red_pago = models.CharField(max_length=100, blank=True)
+    ref_bancaria = models.CharField(max_length=100, blank=True)
+    ref_red = models.CharField(max_length=100, blank=True)
+    ref_cliente_1 = models.CharField(max_length=100, blank=True)
+    ref_cliente_2 = models.CharField(max_length=100, blank=True)
+    ref_cliente_3 = models.CharField(max_length=100, blank=True)
+
+    # Reportado por el banco
+    estado_transaccion_reportado = models.CharField(max_length=20, blank=True)
+    cliente_id_reportado = models.CharField(max_length=20, blank=True)
+    prestamo_id_reportado = models.CharField(max_length=20, blank=True)
+    poliza_id_reportado = models.CharField(max_length=20, blank=True)
+
+    # Resultados de conciliación
+    cliente_id_real = models.BigIntegerField(null=True, blank=True)
+    prestamo_id_real = models.BigIntegerField(null=True, blank=True)
+    poliza_id_real = models.CharField(max_length=20, blank=True)
+
+    # Fechas y horas
+    fecha_pago = models.DateField()
+    hora_pago = models.TimeField()
+    fecha_aplicacion_pago = models.DateTimeField(null=True, blank=True)
+    fecha_conciliacion = models.DateTimeField(null=True, blank=True)
+
+    # Estados
+    estado_pago = models.CharField(max_length=12, choices=ESTADO_PAGO_CHOICES, default='Recibido')
+    estado_conciliacion = models.CharField(max_length=30, choices=ESTADO_CONCILIACION_CHOICES, blank=True)
+
+    # Valor principal del pago
+    valor_pago = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+
+    # ------------ AJUSTE 2: eliminar campos de valores aplicados -----------------
+    # (Eliminados completamente del modelo)
+    # -----------------------------------------------------------------------------
+
+    # Auditoría
+    observaciones = models.CharField(max_length=200, blank=True)
+    creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, editable=False)
+
+    class Meta:
+        verbose_name = "Pago"
+        verbose_name_plural = "Pagos"
+
+    def __str__(self):
+        return f"Pago {self.pago_id} - {self.valor_pago}"
+
+#23---------------------------------------------------------------------------------------
+#=====CONTROL DE FECHAS DEL SISTEMA
+#-----------------------------------------------------------------------------------------
+        
+# appfinancia/models.py
+#from django.db import models
+#from django.conf import settings
+#from django.core.exceptions import ValidationError
+#from django.utils import timezone
+#from datetime import date, timedelta
+
+class Fechas_Sistema(models.Model):
+    ESTADO_SISTEMA_CHOICES = [
+        ('ABIERTO', 'Abierto'),
+        ('CERRADO', 'Cerrado'),
+    ]
+
+    MODO_FECHA_CHOICES = [
+        ('MANUAL', 'Manual'),
+        ('AUTOMATICO', 'Automático'),
+    ]
+
+    # Campos principales
+    fecha_proceso_actual = models.DateField(
+        help_text="Fecha en la que se está procesando actualmente (día hábil)."
+    )
+    fecha_proceso_anterior = models.DateField(
+        help_text="Fecha del último proceso realizado."
+    )
+    fecha_proximo_proceso = models.DateField(
+        help_text="Fecha esperada del próximo proceso."
+    )
+    estado_sistema = models.CharField(
+        max_length=8,
+        choices=ESTADO_SISTEMA_CHOICES,
+        default='ABIERTO',
+        help_text="Controla si el sistema permite operaciones o solo consultas."
+    )
+    modo_fecha_sistema = models.CharField(
+        max_length=10,
+        choices=MODO_FECHA_CHOICES,
+        default='AUTOMATICO',
+        help_text="Automático: se sincroniza con la fecha del sistema. Manual: editable."
+    )
+    fecha_ultima_modificacion = models.DateTimeField(
+        auto_now=True,
+        help_text="Fecha y hora de la última actualización (sistema)."
+    )
+    cambiado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        editable=False,
+        help_text="Usuario que realizó la última modificación."
+    )
+
+    class Meta:
+        verbose_name = "Fecha de Sistema"
+        verbose_name_plural = "Fechas de Sistema"
+
+    def __str__(self):
+        return f"Fechas del Sistema — {self.fecha_proceso_actual} (modo: {self.modo_fecha_sistema})"
+    
+   
+        
+
+    def clean(self):
+        #Para configuración automática
+        if self.modo_fecha_sistema == 'AUTOMATICO':
+           hoy = timezone.now().date()
+           self.fecha_proceso_anterior = hoy - timedelta(days=1)
+           self.fecha_proceso_actual = hoy
+           self.fecha_proximo_proceso = hoy + timedelta(days=1)
+
+        # Validar coherencia de fechas
+        if self.fecha_proceso_anterior >= self.fecha_proceso_actual:
+            raise ValidationError({
+                'fecha_proceso_actual': "La fecha actual debe ser posterior a la anterior."
+            })
+        if self.fecha_proceso_actual >= self.fecha_proximo_proceso:
+            raise ValidationError({
+                'fecha_proximo_proceso': "La fecha próxima debe ser posterior a la actual."
+            })
+
+    def save(self, *args, **kwargs):
+        # Forzar ID = 1 para singleton
+        self.pk = 1
+
+        # Si es modo AUTOMÁTICO y es la primera vez del día → actualizar
+        if self.modo_fecha_sistema == 'AUTOMATICO':
+            hoy = timezone.now().date()
+            # Solo actualiza si aún no se ha actualizado hoy
+            if not Fechas_Sistema.objects.filter(pk=1).exists():
+                # Primer registro
+                self.fecha_proceso_anterior = hoy - timedelta(days=1)
+                self.fecha_proceso_actual = hoy
+                self.fecha_proximo_proceso = hoy + timedelta(days=1)
+            else:
+                # Verificar si ya se actualizó hoy
+                last = Fechas_Sistema.objects.get(pk=1)
+                if last.fecha_proceso_actual != hoy:
+                    # ¡Nuevo día! Actualizar fechas
+                    #self.fecha_proceso_anterior = last.fecha_proceso_actual
+                    self.fecha_proceso_anterior = hoy - timedelta(days=1)
+                    self.fecha_proceso_actual = hoy
+                    self.fecha_proximo_proceso = hoy + timedelta(days=1)
+
+        # Asignar usuario actual (solo en edición)
+        from django.contrib.auth import get_user
+        request = kwargs.pop('request', None)
+        if request:
+            self.cambiado_por = request.user
+        elif hasattr(self, '_request'):
+            self.cambiado_por = self._request.user
+        # Si no hay request (ej: shell), usa el último o un usuario por defecto
+
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        """Obtiene o crea el único registro (singleton)"""
+        obj, created = cls.objects.get_or_create(
+            pk=1,
+            defaults={
+                'fecha_proceso_anterior': timezone.now().date() - timedelta(days=1),
+                'fecha_proceso_actual': timezone.now().date(),
+                'fecha_proximo_proceso': timezone.now().date() + timedelta(days=1),
+                'modo_fecha_sistema': 'AUTOMATICO',
+                'estado_sistema': 'ABIERTO',
+                'cambiado_por_id': 1,  # fallback seguro
+            }
+        )
+        return obj
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("No se permite eliminar el registro de fechas del sistema.")
+
+  
+
+#=========================================================================================
+#        InBox Nueva Versión de Pagos
+#=========================================================================================
+#=========================================================================================
+#TABLA_1 : modelo de 'InBox_PagosCabezal'
+#=========================================================================================
+class InBox_PagosCabezal(models.Model):
+
+    FORMATO_CHOICES = [
+        ('1-FORMATO PSE', '1 - Formato PSE'),
+        ('2-FORMATO ESTANDAR', '2 - Formato Estándar'),
+        ('3-FORMATO EXTRACTO BANCOLOMBIA', '3 - Extracto Bancolombia'),
+    ]
+
+    ESTADO_ARCHIVO_CHOICES = [
+        ('RECIBIDO', 'Recibido'),
+        ('A_PROCESAR', 'A procesar'),
+        ('ANULADO', 'Anulado'),
+    ]
+
+    # Archivo real subido
+    archivo = models.FileField(
+        upload_to='pagos_archivos/',
+        null=True,
+        blank=True,
+        help_text="Seleccione el archivo a cargar"
+    )
+
+    # Nombre del archivo (solo referencia)
+    nombre_archivo_id = models.CharField(
+        max_length=100,
+        unique=True,
+        editable=False
+    )
+
+    formato = models.CharField(max_length=30, choices=FORMATO_CHOICES)
+    fecha_carga_archivo = models.DateTimeField(default=timezone.now, editable=False)
+    banco_origen = models.CharField(max_length=100, blank=True, null=True)
+
+    valor_total = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    registros_cargados = models.PositiveSmallIntegerField(default=0, editable=False)
+    registros_rechazados = models.PositiveSmallIntegerField(default=0, editable=False)
+
+    estado_proceso_archivo = models.CharField(
+        max_length=20,
+        choices=ESTADO_ARCHIVO_CHOICES,
+        default='RECIBIDO'
+    )
+
+    observaciones = models.CharField(max_length=200, blank=True)
+
+    creado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        editable=False,
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+        verbose_name = "InBox Pagos"
+        verbose_name_plural = "InBox Pagos"
+        ordering = ['-fecha_carga_archivo']
+
+    def __str__(self):
+        return f"{self.nombre_archivo_id} ({self.get_formato_display()})"
+
+    def save(self, *args, **kwargs):
+        if self.archivo:
+            self.nombre_archivo_id = self.archivo.name
+
+        super().save(*args, **kwargs)
+
+
+#========================================================================================================
+#TABLA_2 : modelo de 'InBox_PagosDetalle'
+#========================================================================================================
+class InBox_PagosDetalle(models.Model):    
+
+    CLASE_MOV = [
+        ('PAGO_PSE', 'Pago PSE'),
+        ('PAGO_BANCOL', 'Pago Bancolombia'),
+        ('ABONO_PSE', 'Abono PSE'),
+        ('EXLUIDO', 'Excludio'),
+    ]
+
+    TIPO_CUENTA_CHOICES = [
+        ('AHORROS', 'Ahorros'),
+        ('CORRIENTE', 'Corriente'),
+    ]
+    ESTADO_PAGO_CHOICES = [
+        ('RECIBIDO', 'Recibido'),
+        ('A_PROCESAR', 'A procesar'),
+        ('ANULADO', 'Anulado'),
+        ('CONFIRMADO', 'Confirmado'),
+        ('A_NORMALIZAR', 'A regularizar'),
+        ('EXCLUIDO','Excludio')
+    ]
+    ESTADO_FRAGMENTACION_CHOICES = [
+        ('NO_REQUIERE', 'No requiere'),
+        ('A_FRAMENTAR', 'A fragmentar'),
+        ('FRAGMENTADO', 'Fragmentado'),
+    ]
+    
+    ESTADO_CONCILIACION_CHOICES = [
+        ('SI', 'Si'),
+        ('NO', 'No'),
+    ]
+    
+
+    # Clave primaria autonumérica
+    pago_id = models.BigAutoField(primary_key=True)
+    lote_pse = models.BigIntegerField(null=True, blank=True)
+    fragmento_de  = models.BigIntegerField(null=True, blank=True)
+
+    # Relación con archivo
+    nombre_archivo_id = models.ForeignKey(
+        InBox_PagosCabezal,
+        on_delete=models.PROTECT,
+        to_field='nombre_archivo_id',
+        help_text="Archivo de origen"
+    )
+    fecha_carga_archivo = models.DateTimeField(default=timezone.now, editable=False)
+
+    # Datos bancarios
+    banco_origen = models.CharField(max_length=100, blank=True)
+    cuenta_bancaria = models.CharField(max_length=100, blank=True)
+    tipo_cuenta_bancaria = models.CharField(max_length=9, choices=TIPO_CUENTA_CHOICES, blank=True)
+    canal_red_pago = models.CharField(max_length=100, blank=True)
+    ref_bancaria = models.CharField(max_length=100, blank=True)
+    ref_red = models.CharField(max_length=100, blank=True)
+    ref_cliente_1 = models.CharField(max_length=200, blank=True)
+    ref_cliente_2 = models.CharField(max_length=200, blank=True)
+    ref_cliente_3 = models.CharField(max_length=200, blank=True)
+
+    # Reportado por el banco
+    estado_transaccion_reportado = models.CharField(max_length=20, blank=True)
+    clase_movimiento = models.CharField(max_length=30,choices=CLASE_MOV, null=True, blank=True )
+    estado_fragmentacion = models.CharField(max_length=20, blank=True,choices=ESTADO_FRAGMENTACION_CHOICES) 
+
+    cliente_id_reportado = models.CharField(max_length=20, blank=True)
+    prestamo_id_reportado = models.CharField(max_length=20, blank=True)
+    poliza_id_reportado = models.CharField(max_length=20, blank=True)
+
+    # Conciliado
+    cliente_id_real = models.ForeignKey('Clientes', on_delete=models.SET_NULL, null=True, blank=True)
+    prestamo_id_real = models.ForeignKey('Prestamos', on_delete=models.SET_NULL, null=True, blank=True)    
+    poliza_id_real = models.CharField(max_length=20, blank=True)
+
+    # Fechas y horas
+    fecha_pago = models.DateField()
+    fecha_conciliacion = models.DateTimeField(null=True, blank=True)
+
+    # Estados
+    estado_pago = models.CharField(max_length=20, choices=ESTADO_PAGO_CHOICES, null=True)
+    estado_conciliacion = models.CharField(max_length=2, choices=ESTADO_CONCILIACION_CHOICES, null=True, blank=True)
+
+    # Valores
+    valor_pago = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    
+    # Auditoría
+    observaciones = models.CharField(max_length=200, blank=True)
+    creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, editable=False)
+
+    class Meta:
+        verbose_name = "InBox Pago Recibido"
+        verbose_name_plural = "InBox Pagos Recibidos"
+
+    def __str__(self):
+        return f"Pago {self.pago_id} - {self.valor_pago}"
+
+#-----------------------------------------------------------------------------------------
+#
+#-----------------------------------------------------------------------------------------

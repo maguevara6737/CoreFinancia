@@ -1,0 +1,8 @@
+<script>
+// Opcional: limpiar sesión si el usuario cierra la pestaña
+window.addEventListener('beforeunload', function () {
+    // NO hacer fetch aquí (puede bloquear el cierre)
+    // Pero sí podemos limpiar localStorage o sessionStorage si usas tokens allí
+    sessionStorage.clear();  // si usas sessionStorage para tokens
+});
+</script>

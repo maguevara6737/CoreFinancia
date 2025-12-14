@@ -1,0 +1,52 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+  <h1>Fragmentar pago: {{ pago.pago_id }}</h1>
+
+  <div style="margin-bottom:20px;">
+    <strong>Cliente:</strong>
+    {% if pago.cliente_id_real %}
+      {{ pago.cliente_id_real.nombre }} {{ pago.cliente_id_real.apellido }}
+    {% else %}
+      (sin cliente)
+    {% endif %}
+    <br>
+    <strong>Valor total:</strong> {{ pago.valor_pago }} &nbsp;
+    <strong>Fecha pago:</strong> {{ pago.fecha_pago }}
+  </div>
+
+  <form method="post">
+    {% csrf_token %}
+
+    <table class="table" style="max-width:1000px;">
+      <thead>
+        <tr>
+          <th>Letra</th>
+          <th>Préstamo destino</th>
+          <th>Valor fragmento</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in campos %}
+          <tr>
+            <td style="width:60px;">{{ c.letter }}</td>
+            <td style="width:60%;">{{ c.prestamo }}</td>
+            <td style="width:30%;">{{ c.valor }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if form.non_field_errors %}
+      <div style="color:red; margin-bottom:10px;">
+        {% for err in form.non_field_errors %}
+          <div>{{ err }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <button type="submit" class="default">Guardar fragmentación</button>
+    <a href="/admin/appfinancia/inbox_pagosdetalle/" class="button">Cancelar</a>
+  </form>
+{% endblock %}

@@ -343,3 +343,142 @@ def exportar_historia_prestamo_xlsx(request, prestamo_id): # Este prestamo_id es
     # Guardar el archivo en la respuesta
     wb.save(response)
     return response
+
+
+
+
+######################################
+#Fragmentación de pagos
+######################################
+# appfinancia/views.py (añadir al final)
+from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib import messages
+from django.db import transaction
+from decimal import Decimal
+from .forms import FragmentacionForm
+from .models import InBox_PagosDetalle
+
+def fragmentar_pago(request, pago_id):
+    """
+    Fragmenta un InBox_PagosDetalle (pago padre) en 2..6 hijos.
+    """
+    pago = get_object_or_404(InBox_PagosDetalle, pago_id=pago_id)
+
+    # Opcional: exigir que esté en estado A_FRAMENTAR
+    if pago.estado_fragmentacion != "A_FRAMENTAR":
+        messages.warning(request, "El pago seleccionado no está marcado como 'A_FRAMENTAR'. Procediendo de todas formas.")
+
+    if request.method == "POST":
+        form = FragmentacionForm(request.POST, pago_padre=pago)
+        if form.is_valid():
+            data = form.cleaned_data
+            hijos_creados = 0
+            try:
+                with transaction.atomic():
+                    for letter in ("A","B","C","D","E","F"):
+                        prest = data.get(f"prestamo_{letter}")
+                        val = data.get(f"valor_{letter}")
+                        if prest and val:
+                            # crear hijo heredando campo a campo (los más importantes)
+                            hijo = InBox_PagosDetalle(
+                                nombre_archivo_id = pago.nombre_archivo_id,
+                                fecha_carga_archivo = pago.fecha_carga_archivo,
+                                banco_origen = pago.banco_origen,
+                                cuenta_bancaria = pago.cuenta_bancaria,
+                                tipo_cuenta_bancaria = pago.tipo_cuenta_bancaria,
+                                canal_red_pago = pago.canal_red_pago,
+                                ref_bancaria = pago.ref_bancaria,
+                                ref_red = pago.ref_red,
+                                ref_cliente_1 = pago.ref_cliente_1,
+                                ref_cliente_2 = pago.ref_cliente_2,
+                                ref_cliente_3 = pago.ref_cliente_3,
+                                estado_transaccion_reportado = pago.estado_transaccion_reportado,
+                                clase_movimiento = pago.clase_movimiento,
+                                estado_fragmentacion = "FRAGMENTADO",
+                                cliente_id_reportado = pago.cliente_id_reportado,
+                                prestamo_id_reportado = pago.prestamo_id_reportado,
+                                cliente_id_real = pago.cliente_id_real,
+                                prestamo_id_real = prest,
+                                fecha_pago = pago.fecha_pago,
+                                fecha_conciliacion = pago.fecha_conciliacion,
+                                estado_pago = pago.estado_pago,
+                                estado_conciliacion = pago.estado_conciliacion,
+                                valor_pago = Decimal(str(val)),
+                                observaciones = f"Fragmentado de pago {pago.pago_id}",
+                                creado_por = request.user,
+                                fragmento_de = pago.pago_id,
+                            )
+                            hijo.save()
+                            hijos_creados += 1
+
+                    # actualizar estado del padre
+                    pago.estado_fragmentacion = "FRAGMENTADO"
+                    pago.save()
+
+                messages.success(request, f"Fragmentación exitosa: {hijos_creados} pagos hijos creados.")
+                return redirect("/admin/appfinancia/inbox_pagosdetalle/")
+
+            except Exception as e:
+                # Si algo falla dentro del atomic, todo se revierte
+                messages.error(request, f"Error al crear fragmentos: {e}")
+        else:
+            # errores de validación: caerán en la plantilla mostrando form.errors
+            messages.error(request, "Errores en el formulario. Corrija y vuelva a intentar.")
+    else:
+        form = FragmentacionForm(pago_padre=pago)
+
+    # Preparar lista de campos para la plantilla (ordenada A-F)
+    letras = ("A","B","C","D","E","F")
+    campos = []
+    for letter in letras:
+        campos.append({
+            "letter": letter,
+            "prestamo": form[f"prestamo_{letter}"],
+            "valor": form[f"valor_{letter}"],
+        })
+
+    context = {
+        "pago": pago,
+        "form": form,
+        "campos": campos,
+    }
+    return render(request, "appfinancia/fragmentacion_form.html", context)
+
+
+
+#====================
+#Regularizar pagps
+#====================
+from django.shortcuts import get_object_or_404, render, redirect
+from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
+
+from .models import InBox_PagosDetalle
+from .forms import RegularizarPagoForm
+
+
+@staff_member_required
+def regularizar_pago_view(request, pago_id):
+    pago = get_object_or_404(InBox_PagosDetalle, pago_id=pago_id)
+
+    if request.method == "POST":
+        form = RegularizarPagoForm(request.POST, instance=pago)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Pago regularizado correctamente.")
+            return redirect(
+                f"/admin/appfinancia/inbox_pagosdetalle/{pago_id}/change/"
+            )
+    else:
+        form = RegularizarPagoForm(instance=pago)
+
+    context = {
+        "title": "Regularizar Pagos",
+        "pago": pago,
+        "form": form,
+    }
+
+    return render(request, "appfinancia/regularizar_pago.html", context)
+
+
+

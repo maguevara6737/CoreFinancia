@@ -1,0 +1,30 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<h1>Regularizar Pagos</h1>
+
+<fieldset class="module aligned">
+    <h2>Datos del Pago</h2>
+    <p><b>Pago ID:</b> {{ pago.pago_id }}</p>
+    <p><b>Fecha Pago:</b> {{ pago.fecha_pago }}</p>
+    <p><b>Estado:</b> {{ pago.estado_pago }}</p>
+    <p><b>Clase Movimiento:</b> {{ pago.clase_movimiento }}</p>
+    <p><b>Valor:</b> {{ pago.valor_pago }}</p>
+    <p><b>Ref Cliente 3:</b> {{ pago.ref_cliente_3 }}</p>
+</fieldset>
+
+<form method="post">
+    {% csrf_token %}
+    <fieldset class="module aligned">
+        <h2>Asignación</h2>
+        {{ form.as_p }}
+    </fieldset>
+
+    <div class="submit-row">
+        <input type="submit" value="Guardar" class="default">
+        <a href="javascript:history.back()" class="button">Cancelar</a>
+    </div>
+</form>
+{% endblock %}
+

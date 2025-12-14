@@ -20,10 +20,9 @@ from django.template.response import TemplateResponse
 from .models import Desembolsos, Comentarios_Prestamos, Comentarios
 from .forms import ComentarioPrestamoForm
 
-
-
  
 from django.core.exceptions import ValidationError
+
  
 #from .models import Menu
 
@@ -355,13 +354,15 @@ class DesembolsosAdmin(admin.ModelAdmin):
         'fecha_desembolso',
     )
     list_filter = ('estado',)
-    search_fields = ('prestamo_id', 'cliente_id__cliente_id', 'cliente_id__nombres')
+    search_fields = ('=prestamo_id', '=cliente_id__cliente_id', 'cliente_id__nombre')
     ordering = ('-fecha_desembolso',)
     inlines = [ComentarioInline]
     exclude = ('valor_cuota_mensual',)
-
+ 
     # Campos siempre de solo lectura
     readonly_fields_base = ('prestamo_id', 'fecha_vencimiento', 'fecha_creacion')
+    
+
 
     # ------------------------------------------------------------------
     # Diseño del formulario
@@ -468,7 +469,15 @@ class DesembolsosAdmin(admin.ModelAdmin):
         except ValidationError as e:
             self.message_user(request, f"Error al guardar: {e}", level='error')
             
-    
+    #bloque de código para inyectar el java script, debe ir dentro una clase. 2025/11/25 pam  
+    class Media:
+        js = [
+            'appfinancia/js/session-expiry.js',
+            'appfinancia/js/number-format.js',
+            'appfinancia/js/close-tab-logout.js',
+        ]            
+
+            
 #Fin Clase de Desembolso-----------------------------------------------------------------*
 
 
@@ -810,9 +819,14 @@ from django.utils import timezone # Asegúrate de importar timezone si usas los 
 class PrestamosAdmin(admin.ModelAdmin):
     list_display = ['prestamo_id', 'valor', 'fecha_desembolso','ver_plan_pagos_link',]
     search_fields = [
-        'cliente_id__nombre',  # Si tienes un campo 'nombre' en Clientes
-        'asesor_id__nombre',
-        'prestamo_id__id',  # Si quieres buscar por el ID del desembolso
+        #'=cliente_id',           # 'cliente_id__nombre' Si tienes un campo 'nombre' en Clientes
+        #'=asesor_id',           # 'asesor_id__nombre'
+        #'prestamo_id__id',     # Si quieres buscar por el ID del desembolso
+        'prestamo_id__prestamo_id__exact',        # Si quieres buscar por el ID del desembolso. 2025/1202.pam
+        'cliente_id__cliente_id__exact', 
+		#'cliente_id__nombre',
+		'asesor_id__asesor_id__exact',
+		#'asesor_id__nombre',  
     ]
     list_filter = (
         'fecha_desembolso',
@@ -936,6 +950,11 @@ class HistoriaPrestamosAdmin(admin.ModelAdmin):
         'fecha_efectiva',
         'fecha_proceso'
     )
+    list_filter = ('prestamo_id',)
+    #search_fields = ('prestamo_id','numero_cuota')
+    search_fields = ('prestamo_id__prestamo_id__exact','numero_cuota')
+    
+    
     readonly_fields = (
         'detalle_breve', # Tu campo personalizado
         'id',            # PK autogenerado por Django
@@ -997,6 +1016,552 @@ class BitacoraAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False  # No permite eliminar
 
-#-------------------------------------------------------------------------------
+
+#=========================================================================================        
+# === CONTROL DE ARCHIVOS DE PAGOS === 2025/11/24       
+#=========================================================================================
+
+from django.contrib import admin
+from django import forms
+from django.contrib import messages
+from django.utils.safestring import mark_safe
+from .models import Pagos
+
+
+#admin.site.register(Pagos_Archivos, Pagos_Archivos_Admin)
+admin.site.register(Pagos)
+
+        
+#23---------------------------------------------------------------------------------------
+#=====CONTROL DE FECHAS DEL SISTEMA
+#-----------------------------------------------------------------------------------------
+# appfinancia/admin.py
+#from django.contrib import admin
+#from django import forms
+# appfinancia/admin.py
+
+#from django.contrib import admin
+#from django import forms
+#from django.utils.html import format_html
+from .models import Fechas_Sistema
+
+
+class FechasSistemaForm(forms.ModelForm):
+    class Meta:
+        model = Fechas_Sistema
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Si ya existe y está en modo AUTOMÁTICO → bloquear fechas
+        if self.instance.pk and self.instance.modo_fecha_sistema == 'AUTOMATICO':
+            for field_name in ['fecha_proceso_anterior', 'fecha_proceso_actual', 'fecha_proximo_proceso']:
+                self.fields[field_name].disabled = True
+                self.fields[field_name].help_text = "🔒 Solo editable en modo 'Manual'."
+
+
+@admin.register(Fechas_Sistema)
+class FechasSistemaAdmin(admin.ModelAdmin):
+    form = FechasSistemaForm
+
+    list_display = (
+        'fecha_proceso_actual',
+        'estado_sistema_colored',
+        'modo_fecha_sistema',
+        'fecha_ultima_modificacion',
+        'cambiado_por',
+    )
+
+    # Campo con HTML seguro
+    def estado_sistema_colored(self, obj):
+        color = 'green' if obj.estado_sistema == 'ABIERTO' else 'red'
+        display = obj.get_estado_sistema_display()
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{}</span>',
+            color,
+            display
+        )
+    estado_sistema_colored.short_description = "Estado"
+
+    # --- Permisos ---
+    def has_add_permission(self, request):
+        # Solo permitir crear si no existe ningún registro
+        return not Fechas_Sistema.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False  # ⛔ Nunca permitir eliminar
+
+    # --- Guardar con usuario actual ---
+    def save_model(self, request, obj, form, change):
+        if not change:  # Creación
+            obj.cambiado_por = request.user
+        else:  # Edición
+            # Actualiza fecha_ultima_modificacion y cambiado_por siempre que se edite
+            obj.cambiado_por = request.user
+        super().save_model(request, obj, form, change)
+
+
+#Fin archivo 'admin.py' para imprimir el banner de la Fecha de proceso del sistema
+#*****************************************************************************************
+#Este bloque de código debe ir al final del archivo 'admin.py'
+# admin.py (al final del archivo)
+
+#*****************************************************************************************
+
+'''
+#from django.contrib.admin import AdminSite
+from appfinancia.utils import FechasSistemaHelper
+
+class CustomAdminSite(AdminSite):
+    def index(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context['fecha_sistema'] = FechasSistemaHelper.get_fecha_proceso_actual()
+        return super().index(request, extra_context=extra_context)
+
+# Reemplaza el admin por defecto
+admin.site = CustomAdminSite()
+'''  
+#Fin fechas del sistema
+
+#-----------------------------------------------------------------------------------------
+#                       InBox
+#-----------------------------------------------------------------------------------------
+
+from django.contrib import admin, messages
+from django import forms
+from django.db import transaction, IntegrityError
+from .models import InBox_PagosCabezal, InBox_PagosDetalle
+from .utils import f_procesar_archivo, f_anular_archivo,InBox_Pagos
+#from .importacion_archivos import InBox_Pagos
+import os   # ← IMPORTANTE: evita el NameError
+
+#import os
+#from django.contrib import admin, messages
+#from django import forms
+
+#from .models import InBox_PagosCabezal
+#from .utils import f_procesar_archivo, f_anular_archivo
+
+
+# ================================================================
+# FORMULARIO PERSONALIZADO PARA CABEZAL
+# ================================================================
+class InBoxPagosCabezalForm(forms.ModelForm):
+
+    archivo_subido = forms.FileField(
+        required=True,
+        label="Archivo a cargar",
+        help_text="Seleccione un archivo .xls, .xlsx, .csv o .pdf"
+    )
+
+    class Meta:
+        model = InBox_PagosCabezal
+        fields = ["observaciones"]  # archivo va como campo adicional
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # CREAR → permitir edición
+        if not self.instance or not self.instance.pk:
+            return
+
+        # EDITAR → deshabilitar campos
+        self.fields["archivo_subido"].disabled = True
+        self.fields["observaciones"].disabled = True
+
+
+# ================================================================
+# ADMIN PERSONALIZADO
+# ================================================================
+@admin.register(InBox_PagosCabezal)
+class InBox_PagosCabezalAdmin(admin.ModelAdmin):
+
+    form = InBoxPagosCabezalForm
+
+    # Asegurar funcionalidad de collapse en fieldsets
+    class Media:
+        js = ("admin/js/jquery.init.js", "admin/js/collapse.js")
+
+    # -------------------------------------------------------------
+    # CONFIGURACIÓN ADMIN
+    # -------------------------------------------------------------
+    list_display = (
+        'col_fecha',
+        'valor_total',
+        'col_cargados',
+        'col_rechazados',
+        'col_estado_archivo',
+        'nombre_archivo_id',
+    )
+
+    list_filter = ('estado_proceso_archivo',)
+    search_fields = ('nombre_archivo_id',)
+    ordering = ('-fecha_carga_archivo',)
+    list_per_page = 10
+
+    readonly_fields = (
+        "nombre_archivo_id",
+        "fecha_carga_archivo",
+        "valor_total",
+        "registros_cargados",
+        "registros_rechazados",
+        "estado_proceso_archivo",
+        "creado_por",
+    )
+
+    # -------------------------------------------------------------
+    # ORGANIZAR FORMULARIO EN SECCIONES (FIELDSETS)
+    # -------------------------------------------------------------
+    fieldsets = (
+        ("Datos del Archivo", {
+            "fields": ("archivo_subido", "nombre_archivo_id", "observaciones"),
+        }),
+        ("Resultados", {
+            "classes": ("collapse",),   # SECCIÓN OCULTA
+            "fields": (
+                "valor_total",
+                "registros_cargados",
+                "registros_rechazados",
+                "estado_proceso_archivo",
+            ),
+        }),
+        ("Auditoría", {
+            "classes": ("collapse",),   # SECCIÓN OCULTA
+            "fields": ("fecha_carga_archivo", "creado_por"),
+        }),
+    )
+
+    # -------------------------------------------------------------
+    # ACCIONES PERSONALIZADAS
+    # -------------------------------------------------------------
+    actions = ["accion_procesar_archivo", "accion_anular_archivo"]
+
+    #-----------------------------------------------------
+    def col_fecha(self, obj):
+        if obj.fecha_carga_archivo:
+            return obj.fecha_carga_archivo.strftime('%Y-%m-%d %H:%M:%S')
+        return "N/A" # Manejar el caso donde la fecha es nula
+        
+    def col_cargados(self, obj):
+        return obj.registros_cargados
+    col_cargados.short_description = "Cargados"
+    
+    def col_rechazados(self, obj):
+        return obj.registros_rechazados
+    col_rechazados.short_description = "Rechazados"
+    
+    def col_estado_archivo(self, obj):
+        return obj.estado_proceso_archivo
+    col_estado_archivo.short_description = "Estado"
+    
+    #-----------------------------------------------------
+
+    def accion_procesar_archivo(self, request, queryset):
+        procesados = 0
+
+        for obj in queryset:
+            try:
+                ok, msg = f_procesar_archivo(obj, request.user)
+
+                if ok:
+                    procesados += 1
+                    self.message_user(
+                        request,
+                        f"✔ Archivo {obj.nombre_archivo_id} procesado: {msg}",
+                        level=messages.SUCCESS,
+                    )
+                else:
+                    self.message_user(
+                        request,
+                        f"⚠ Archivo {obj.nombre_archivo_id} con advertencias: {msg}",
+                        level=messages.WARNING,
+                    )
+
+            except Exception as e:
+                self.message_user(
+                    request,
+                    f"❌ Error procesando {obj.nombre_archivo_id}: {e}",
+                    level=messages.ERROR,
+                )
+
+        self.message_user(request, f"✔ Procesados {procesados} archivo(s).")
+
+    accion_procesar_archivo.short_description = "Procesar archivo seleccionado"
+
+    def accion_anular_archivo(self, request, queryset):
+        anulados = 0
+
+        for obj in queryset:
+            try:
+                ok, msg = f_anular_archivo(obj, request.user)
+
+                if ok:
+                    anulados += 1
+                    self.message_user(
+                        request,
+                        f"✔ Archivo {obj.nombre_archivo_id} anulado",
+                        level=messages.WARNING,
+                    )
+                else:
+                    self.message_user(
+                        request,
+                        f"⚠ No se pudo anular {obj.nombre_archivo_id}: {msg}",
+                        level=messages.ERROR,
+                    )
+
+            except Exception as e:
+                self.message_user(
+                    request,
+                    f"❌ Error anulando {obj.nombre_archivo_id}: {e}",
+                    level=messages.ERROR,
+                )
+
+        self.message_user(request, f"✔ Anulados {anulados} archivo(s).")
+
+    accion_anular_archivo.short_description = "Anular archivo seleccionado"
+
+    # -------------------------------------------------------------
+    # GUARDADO + CARGA DEL ARCHIVO
+    # -------------------------------------------------------------
+    def save_model(self, request, obj, form, change):
+        archivo = form.cleaned_data.get("archivo_subido")
+
+        # Usuario creador
+        if not change:
+            obj.creado_por = request.user
+
+        # Asignar nombre del archivo
+        if archivo:
+            obj.nombre_archivo_id = archivo.name
+
+        # Validación de duplicados
+        if InBox_PagosCabezal.objects.filter(nombre_archivo_id=obj.nombre_archivo_id).exists():
+            self.message_user(
+                request,
+                f"❌ Ya existe un archivo con el nombre '{obj.nombre_archivo_id}'.",
+                level=messages.ERROR,
+            )
+            return
+
+        try:
+            with transaction.atomic():
+                super().save_model(request, obj, form, change)
+
+            # Procesar archivo automáticamente al cargarlo
+            ok, msg = InBox_Pagos(
+                archivo_pagos=archivo,
+                usuario=request.user,
+                cabezal=obj,
+            )
+
+            if ok:
+                self.message_user(request, f"✔ Archivo procesado: {msg}", level=messages.SUCCESS)
+            else:
+                self.message_user(request, f"⚠ Advertencia: {msg}", level=messages.WARNING)
+
+        except IntegrityError:
+            self.message_user(
+                request,
+                "❌ Error: el nombre del archivo ya existe.",
+                level=messages.ERROR
+            )
+
+
+
+# ================================================================
+# ADMIN PARA DETALLE
+# ================================================================
+
+from django.urls import reverse
+from django.utils.html import format_html
+
+# admin.py (fragmento a pegar en la clase InBox_PagosDetalleAdmin)
+from django.contrib import admin, messages
+from django.utils.translation import gettext_lazy as _
+from .services.conciliacion import conciliacion_por_movimiento
+
+@admin.register(InBox_PagosDetalle)
+class InBox_PagosDetalleAdmin(admin.ModelAdmin):
+    list_display = (
+        'col_pago_id',
+        'lote_pse',
+        'col_fragmento',
+        'col_clase_movimiento',
+        'col_estado_pago',
+        'col_conciliacion',
+        'col_cliente',
+        'col_prestamo',
+        'valor_pago',
+        'col_fecha_pago',
+        'regularizar_pago_action',   # ← NUEVO
+        'fragmentar_pago_action',
+    )
+    list_filter = ('estado_pago','estado_conciliacion','estado_fragmentacion','clase_movimiento','cliente_id_real')
+    search_fields = ('=cliente_id_real', '=pago_id', 'lote_pse')
+    ordering = ('-pago_id',)
+    
+    readonly_fields = (
+        "pago_id",
+        "fecha_carga_archivo",
+        "creado_por",
+    )
+    #list_per_page = 14 
+
+    fieldsets = (
+        ("ARCHIVO DE ORIGEN", {
+            "fields": ("nombre_archivo_id", "fecha_carga_archivo"),
+        }),
+
+        ("IDENTIFICADORES Y GRUPOS", {
+            "fields": ("lote_pse", "fragmento_de"),
+        }),
+
+        ("DATOS BANCARIOS", {
+            "fields": (
+                "banco_origen",
+                "cuenta_bancaria",
+                "tipo_cuenta_bancaria",
+                "canal_red_pago",
+                "ref_bancaria",
+                "ref_red",
+                "ref_cliente_1",
+                "ref_cliente_2",
+                "ref_cliente_3",
+            ),
+        }),
+
+        ("INFORMACIÓN REPORTADA POR EL BANCO", {
+            "fields": (
+                "estado_transaccion_reportado",
+                "clase_movimiento",
+                "estado_fragmentacion",
+                "cliente_id_reportado",
+                "prestamo_id_reportado",
+                "poliza_id_reportado",
+            ),
+        }),
+
+        ("DATOS DE CONCILIACIÓN", {
+            "fields": (
+                "cliente_id_real",
+                "prestamo_id_real",
+                "poliza_id_real",
+                "fecha_conciliacion",
+                "estado_conciliacion",
+            ),
+        }),
+
+        ("PAGO Y ESTADO", {
+            "fields": ("fecha_pago", "valor_pago", "estado_pago"),
+        }),
+
+        ("AUDITORÍA", {
+            "fields": ("creado_por", "observaciones"),
+        }),
+    )
+    
+    actions = ["action_conciliar_movimientos_seleccionados"]
+    
+    def col_estado_pago(self, obj):
+        return obj.estado_pago
+    col_estado_pago.short_description = "Estado"
+    
+    def col_clase_movimiento(self, obj):
+        return obj.clase_movimiento
+    col_clase_movimiento.short_description = "Clase Pago"
+    
+    def col_fecha_pago(self, obj):
+        if obj.fecha_pago:
+            return obj.fecha_pago.strftime('%Y-%b-%d')
+        return "N/A"
+    col_fecha_pago.short_description = "Fecha Pago"    
+    
+    def col_pago_id(self, obj):
+        return obj.pago_id
+    col_pago_id.short_description = "PagoId"
+    
+    def col_fragmento(self, obj):
+        return obj.fragmento_de
+    col_fragmento.short_description = "Frag"
+    
+    def col_fragmentacion(self, obj):
+        return obj.estado_fragmentacion
+    col_fragmentacion.short_description = "Fragmentacion"
+
+    def col_cliente(self, obj):
+        return obj.cliente_id_real
+    col_cliente.short_description = "Cliente"
+
+    def col_prestamo(self, obj):
+        return obj.prestamo_id_real
+    col_prestamo.short_description = "Prestamo"
+    
+    def col_conciliacion(self, obj):
+        return obj.estado_conciliacion
+    col_conciliacion.short_description = "Conci"
+    
+    #boton de fragmentación---------------------------------------------------
+    def fragmentar_pago_action(self, obj):
+        url = reverse("appfinancia:fragmentar_pago", args=[obj.pago_id])
+        return format_html('<a class="button" href="{}">Frag</a>', url)
+    fragmentar_pago_action.short_description = "Frag"
+    #-------------------------------------------------------------------------
+
+    def regularizar_pago_action(self, obj):
+        url = reverse("appfinancia:regularizar_pago", args=[obj.pago_id])
+        return format_html('<a class="button" href="{}">Regu</a>', url)
+    regularizar_pago_action.short_description = "Regu"
+
+    #-------------------------------------------------------------------------
+
+    def save_model(self, request, obj, form, change):
+        if not obj.pk:
+            obj.creado_por = request.user
+        super().save_model(request, obj, form, change)
+        
+   #Acción conciliación-------------------------------------------------------------------     
+    def action_conciliar_movimientos_seleccionados(self, request, queryset):
+        """
+        Action para conciliar los movimientos seleccionados (que deben ser ABONO_PSE).
+        """
+        movimientos = queryset.filter(clase_movimiento="ABONO_PSE", estado_pago="A_PROCESAR")
+        total_mov = movimientos.count()
+        conciliados = 0
+        asignados_total = 0
+        no_conciliar = []
+
+        for mov in movimientos:
+            # candidatos: pagos directos PSE sin grupo asignado y A_PROCESAR
+            candidatos_qs = InBox_PagosDetalle.objects.filter(
+                #clase_movimiento="PAGO_PSE_PSE",
+                clase_movimiento="PAGO_PSE",
+                estado_pago="A_PROCESAR",
+                estado_conciliacion="NO",                
+                lote_pse__isnull=True,  # no asignados aún
+            )
+            ok, msg, detalles = conciliacion_por_movimiento(mov, candidatos_qs)
+            if ok:
+                conciliados += 1
+                asignados_total += detalles.get("hijos_creados", 0)
+            else:
+                no_conciliar.append((mov.pago_id, msg))
+
+        if conciliados:
+            self.message_user(
+                request,
+                _(f"{conciliados} de {total_mov} movimientos conciliados correctamente. Pagos asignados: {asignados_total}"),
+                level=messages.SUCCESS
+            )
+
+        if no_conciliar:
+            # mostrar algunos detalles
+            lines = "; ".join([f"{mid}: {msg}" for mid, msg in no_conciliar[:10]])
+            self.message_user(
+                request,
+                _(f"{len(no_conciliar)} movimientos no conciliados. Ejemplos: {lines}"),
+                level=messages.WARNING
+            )
+
+    action_conciliar_movimientos_seleccionados.short_description = "Conciliar movimientos seleccionados (PSE grupos)"
 
 

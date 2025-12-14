@@ -1,0 +1,15 @@
+{% extends "admin/index.html" %}
+{% load i18n static %}
+
+{% block content %}
+<div id="content-main">
+  <!-- ✅ BANNER INFORMATIVO -->
+  <div style="margin-bottom:1.5em; padding:12px; background:#e8f5e9; border-left:4px solid #4caf50; border-radius:4px;">
+    <strong>ℹ️ Fecha del sistema:</strong> 
+    <span style="font-weight:bold; color:#2e7d32;">{{ fecha_sistema }}</span>
+    <small>(usada para validaciones, procesos y conciliaciones)</small>
+  </div>
+
+  {{ block.super }}
+</div>
+{% endblock %}
