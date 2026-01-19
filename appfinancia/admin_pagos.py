@@ -242,8 +242,8 @@ class InBox_PagosDetalleAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        # Filtrar por los que están A_FRAMENTAR (según requerimiento principal)
-        return qs.filter(estado_fragmentacion="A_FRAMENTAR")
+        # Filtrar por los que están A_FRAGMENTAR (según requerimiento principal)
+        return qs.filter(estado_fragmentacion="A_FRAGMENTAR")
 
     def nombre_cliente(self, obj):
         # retorna nombre y apellido del cliente real si existe

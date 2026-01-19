@@ -1,0 +1,88 @@
+{% extends "admin/change_list.html" %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <style>
+        /* Contenedor principal para alinear búsqueda + botones */
+        .search-action-container {
+            display: flex !important;
+            align-items: center !important;
+            background: #f8f8f8; /* Color de fondo de la barra de búsqueda */
+            padding: 8px 15px;
+            border-bottom: 1px solid #eee;
+            gap: 10px; /* Espacio entre la búsqueda y los botones */
+            flex-wrap: nowrap; /* Evita que los botones bajen */
+        }
+
+        /* Ajuste del formulario de búsqueda original de Django */
+        #changelist-search {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: none !important;
+            border: none !important;
+            float: none !important; /* Quitamos el float que rompe el diseño */
+        }
+
+        /* Estilo tipo "FILTRO" ajustado al texto */
+        .btn-django-style {
+            background: #417690 !important; /* Azul Filtro */
+            color: #fff !important;
+            font-size: 11px !important;
+            font-weight: bold !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.5px !important;
+            padding: 0 15px !important; /* Padding lateral para que respire el texto */
+            border: none !important;
+            border-radius: 4px !important;
+            cursor: pointer !important;
+            text-decoration: none !important;
+            white-space: nowrap !important; /* Evita que el texto se rompa */
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            height: 28px !important; /* Altura similar al input de búsqueda */
+            width: auto !important; /* Ancho automático según el texto */
+            min-width: fit-content !important;
+            transition: background 0.2s !important;
+        }
+
+        .btn-django-style:hover {
+            background: #264b5d !important;
+        }
+
+        /* Alineación interna de la lupa y el input */
+        #changelist-search > div {
+            display: flex !important;
+            align-items: center !important;
+            gap: 5px;
+        }
+    </style>
+{% endblock %}
+
+{# --- QUITAMOS LA BARRA SUPERIOR (AÑADIR) --- #}
+{% block object-tools %}{% endblock %}
+
+{# --- REEMPLAZAMOS EL BLOQUE DE BÚSQUEDA --- #}
+{% block search %}
+    <div class="search-action-container">
+        {# Renderiza el formulario de búsqueda original #}
+        {{ block.super }}
+        
+        {# Botón Ejecutar #}
+        <form method="post"
+              action="{% url 'admin:appfinancia_pagospararegularizar_conciliacion' %}"
+              style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn-django-style">
+                🔄 Ejecutar Conciliación
+            </button>
+        </form>
+
+        {# Botón Descargar - Sincronizado con admin.py #}
+        <a href="{% url 'admin:appfinancia_pagospararegularizar_descargar_resumen' %}?conciliacion_id={{ request.GET.conciliacion_id }}"
+           class="button">
+            📥 Resumen conciliación
+        </a>    
+    </div>
+{% endblock %}
+

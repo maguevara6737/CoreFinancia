@@ -10,28 +10,28 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name='pagos',
-            name='valor_aplicado_acreedores',
-        ),
-        migrations.RemoveField(
-            model_name='pagos',
-            name='valor_aplicado_capital',
-        ),
-        migrations.RemoveField(
-            model_name='pagos',
-            name='valor_aplicado_gastos',
-        ),
-        migrations.RemoveField(
-            model_name='pagos',
-            name='valor_aplicado_intereses',
-        ),
-        migrations.RemoveField(
-            model_name='pagos',
-            name='valor_aplicado_otros',
-        ),
-        migrations.RemoveField(
-            model_name='pagos',
-            name='valor_aplicado_seguros',
-        ),
+        #migrations.RemoveField(
+        #    model_name='pagos',
+        #    name='valor_aplicado_acreedores',
+        #),
+        #migrations.RemoveField(
+        #    model_name='pagos',
+        #    name='valor_aplicado_capital',
+        #),
+        #migrations.RemoveField(
+        #    model_name='pagos',
+        #    name='valor_aplicado_gastos',
+        #),
+        #migrations.RemoveField(
+        #    model_name='pagos',
+        #    name='valor_aplicado_intereses',
+        #),
+        #migrations.RemoveField(
+        #    model_name='pagos',
+        #    name='valor_aplicado_otros',
+        #),
+        #migrations.RemoveField(
+        #    model_name='pagos',
+        #    name='valor_aplicado_seguros',
+        #),
     ]

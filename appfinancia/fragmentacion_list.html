@@ -1,0 +1,50 @@
+{# templates/appfinancia/fragmentacion_list.html #}
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<h1>Fragmentación de Pagos — Lista</h1>
+
+<table class="adminlist">
+  <thead>
+    <tr>
+      <th>Pago ID</th>
+      <th>Préstamo</th>
+      <th>Cliente</th>
+      <th>Nombre cliente</th>
+      <th>Valor pago</th>
+      <th>Fecha pago</th>
+      <th>Clase</th>
+      <th>Estado</th>
+      <th>Conciliación</th>
+      <th>Acción</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in pagos %}
+      <tr>
+        <td>{{ p.pago_id }}</td>
+        <td>{{ p.prestamo_id_real }}</td>
+        <td>{{ p.cliente_id_real }}</td>
+        <td>
+          {% if p.cliente_id_real %}
+            {{ p.cliente_id_real.nombre }} {{ p.cliente_id_real.apellido }}
+          {% else %}
+            -
+          {% endif %}
+        </td>
+        <td style="text-align:right;">{{ p.valor_pago }}</td>
+        <td>{{ p.fecha_pago }}</td>
+        <td>{{ p.clase_movimiento }}</td>
+        <td>{{ p.estado_pago }}</td>
+        <td>{{ p.fecha_conciliacion }}</td>
+        <td>
+          <a class="button" href="{% url 'appfinancia:fragmentar_pago' p.pago_id %}">Fragmentar</a>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="10">No hay pagos para fragmentar.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

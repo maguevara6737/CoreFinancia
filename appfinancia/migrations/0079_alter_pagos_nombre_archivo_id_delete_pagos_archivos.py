@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
             name='nombre_archivo_id',
             field=models.CharField(db_index=True, help_text='Identificador del archivo de origen (no es ForeignKey)', max_length=200),
         ),
-        migrations.DeleteModel(
-            name='Pagos_Archivos',
-        ),
+        #migrations.DeleteModel(
+        #    name='Pagos_Archivos',
+        #),
     ]

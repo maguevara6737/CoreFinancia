@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+#from .views import regularizar_pago_view
  
 
 app_name = "appfinancia" #añadido 2025/12/10 para fragmentación de pagos
@@ -18,5 +19,6 @@ urlpatterns = [
     path('estado_cuenta/<int:prestamo_id>/excel/', views.estado_cuenta_view, name='estado_cuenta_excel'),
     path("fragmentacion/fragmentar/<int:pago_id>/", views.fragmentar_pago, name="fragmentar_pago"),
     path("regularizar-pago/<int:pago_id>/",views.regularizar_pago_view, name="regularizar_pago", ),
+    #path("buscar-prestamo/", buscar_prestamo,name="buscar_prestamo"),
+    #path("regularizar-pago/<int:pago_id>/",regularizar_pago_view,name="regularizar_pago"),
 ]
-

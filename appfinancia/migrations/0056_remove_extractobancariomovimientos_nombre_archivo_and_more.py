@@ -10,22 +10,22 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name='extractobancariomovimientos',
-            name='nombre_archivo',
-        ),
-        migrations.RemoveField(
-            model_name='extractobancariomovimientos',
-            name='cliente_id_real',
-        ),
-        migrations.RemoveField(
-            model_name='extractobancariomovimientos',
-            name='prestamo_id_real',
-        ),
-        migrations.DeleteModel(
-            name='ExtractoBancario',
-        ),
-        migrations.DeleteModel(
-            name='ExtractoBancarioMovimientos',
-        ),
+        #migrations.RemoveField(
+        #    model_name='extractobancariomovimientos',
+        #    name='nombre_archivo',
+        #),
+        #migrations.RemoveField(
+        #    model_name='extractobancariomovimientos',
+        #    name='cliente_id_real',
+        #),
+        #migrations.RemoveField(
+        #    model_name='extractobancariomovimientos',
+        #    name='prestamo_id_real',
+        #),
+        #migrations.DeleteModel(
+        #    name='ExtractoBancario',
+        #),
+        #migrations.DeleteModel(
+        #    name='ExtractoBancarioMovimientos',
+        #),
     ]

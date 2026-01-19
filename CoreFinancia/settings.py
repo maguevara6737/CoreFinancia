@@ -33,22 +33,22 @@ DEBUG = True
 # ✅ Allow local + remote dev access (adjust in production!)
 ALLOWED_HOSTS = ['72.60.172.191', 'localhost', '127.0.0.1']
 
-#incluido 2025/11/23
+#incluido 2025/12/23
 # ==============================================================================
 # --- Internacionalización y formato numérico (coma miles, punto decimales) ---
 # ==============================================================================
-USE_I18N = True
-USE_L10N = True
-USE_TZ = True
-
 LANGUAGE_CODE = 'es-co'
 TIME_ZONE = 'America/Bogota'
-
-# ✅ Formato numérico: 1,000,000.50
+USE_I18N = True
+USE_TZ = True
+# 🔴 CLAVE: desactivar localización automática
+USE_L10N = False
 USE_THOUSAND_SEPARATOR = True
 THOUSAND_SEPARATOR = ','
 DECIMAL_SEPARATOR = '.'
 NUMBER_GROUPING = 3
+
+
 
 # --- Archivos estáticos (requerido para el JS de formato) ---
 #import os
@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.humanize',  # ← required for number formatting (e.g., intcomma)
+    'smart_selects',
     'appfinancia',
 ]
 
@@ -80,11 +81,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'appfinancia.middleware.ActualizarFechasMiddleware', #actualizar fechas_del sistema
+    'appfinancia.middleware.FechaSistemaMiddleware', #actualizar fechas_del sistema
 ]
 
 ROOT_URLCONF = 'CoreFinancia.urls'
-
 
 # ==============================================================================
 # Templates
@@ -92,7 +92,9 @@ ROOT_URLCONF = 'CoreFinancia.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [os.path.join(BASE_DIR, 'appfinancia', 'templates')],
+        'DIRS': [
+            os.path.join(BASE_DIR, 'appfinancia', 'templates'),
+        ],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -100,6 +102,9 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+
+                # 🔹 CoreFinancia – Fecha de Proceso del Sistema
+                'appfinancia.context_processors.fecha_sistema',
             ],
         },
     },
@@ -122,7 +127,6 @@ DATABASES = {
     }
 }
 
-
 # ==============================================================================
 # Password validation
 # ==============================================================================
@@ -132,36 +136,6 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
-
-
-#código suspendido 2025/11/23
-# ==============================================================================
-# Internationalization & Localization — ✅ FORMATO NUMÉRICO: 1,000,000.50
-# ==============================================================================
-#USE_I18N = True
-#USE_L10N = True  # Habilita formateo localizado (necesario para USE_THOUSAND_SEPARATOR)
-#USE_TZ = True
-
-#LANGUAGE_CODE = 'es-co'
-#TIME_ZONE = 'America/Bogota'
-
-# ✅ Formato numérico: coma miles, punto decimales (1,000,000.50)
-#USE_THOUSAND_SEPARATOR = True
-#THOUSAND_SEPARATOR = ','
-#DECIMAL_SEPARATOR = '.'
-#NUMBER_GROUPING = 3
-
-
-# ==============================================================================
-# Static files (CSS, JavaScript, Images)
-# ==============================================================================
-#STATIC_URL = 'static/'    #código suspendido 2025/11/23
-
-# Optional: para desarrollo con staticfiles fuera de apps
-# STATICFILES_DIRS = [
-#     BASE_DIR / "static",
-# ]
-
 
 # ==============================================================================
 # Default primary key field type
@@ -210,7 +184,7 @@ SESSION_COOKIE_SAMESITE = 'Lax'  # o 'Strict' si no usas iframes
 
 # Sesión efímera (se cierra al cerrar navegador)
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
-SESSION_COOKIE_AGE = 1800  # 30 min de inactividad
+SESSION_COOKIE_AGE = 7200  # 7200 segundo de inactividad
 SESSION_SAVE_EVERY_REQUEST = True
 
 # 🔐 Solo activa SECURE si usas HTTPS
@@ -224,5 +198,34 @@ CSRF_COOKIE_HTTPONLY = True
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
 ]
+
+#incluido para leer los archivos adjuntos a los correos de Financiación. 2025/12/29
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+#-------------------------------------------
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+
+# ===== IMAP (ENTRANTES) =====
+IMAP_HOST = "imap.gmail.com"
+IMAP_USER = "financia.seguros.pruebas@gmail.com"
+IMAP_PASSWORD = "vbxstaiyahvelaxw"
+
+# ===== SMTP (SALIENTES) =====
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+
+EMAIL_HOST_USER = "financia.seguros.pruebas@gmail.com"
+EMAIL_HOST_PASSWORD = "vbxstaiyahvelaxw"
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+# ===== FIN SMTP (SALIENTES) =====
+
+
+
+
 
 

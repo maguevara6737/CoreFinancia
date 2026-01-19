@@ -370,9 +370,9 @@ def fragmentar_pago(request, pago_id):
     """
     pago = get_object_or_404(InBox_PagosDetalle, pago_id=pago_id)
 
-    # Opcional: exigir que esté en estado A_FRAMENTAR
-    if pago.estado_fragmentacion != "A_FRAMENTAR":
-        messages.warning(request, "El pago seleccionado no está marcado como 'A_FRAMENTAR'. Procediendo de todas formas.")
+    # Opcional: exigir que esté en estado A_FRAGMENTAR
+    if pago.estado_fragmentacion != "A_FRAGMENTAR":
+        messages.warning(request, "El pago seleccionado no está marcado como 'A_FRAGMENTAR'. Procediendo de todas formas.")
 
     if request.method == "POST":
         form = FragmentacionForm(request.POST, pago_padre=pago)
@@ -652,14 +652,6 @@ def generar_excel_estado_cuenta(context):
 # appfinancia/views.py
 
 #-------------------------------------------------------------
-
-
-# admin.py
-# appfinancia/admin.py
-# appfinancia/views.py
-
-# appfinancia/views.py
-
 from django.shortcuts import render
 from django.http import HttpResponse
 from django.contrib import messages
@@ -1289,4 +1281,33 @@ def prestamos_vencidos_view(request):
         form = PrestamosVencidosForm()
         context = get_context(form)
         return render(request, 'admin/prestamos_vencidos.html', context)
+
+
+
+#-----------------para el proceso de regularización 2025/12/18----------------------------
+from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib import messages
+from .models import InBox_PagosDetalle
+from .forms import RegularizarPagoForm
+
+def regularizar_pago_view(request, pago_id):
+    pago = get_object_or_404(InBox_PagosDetalle, pago_id=pago_id)
+
+    if request.method == "POST":
+        form = RegularizarPagoForm(request.POST, instance=pago)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Préstamo asignado correctamente.")
+            return redirect("admin:appfinancia_inbox_pagosdetalle_change", pago_id)
+    else:
+        form = RegularizarPagoForm(instance=pago)
+
+    return render(
+        request,
+        "appfinancia/regularizar_pago.html",
+        {
+            "form": form,
+            "pago": pago,
+        }
+    )
 

@@ -1,56 +1,85 @@
+# ======================================================
+# 1. LIBRERÍAS ESTÁNDAR DE PYTHON
+# ======================================================
+import os
+from datetime import date
 from decimal import Decimal
-from django.contrib import admin, messages
 
-# appfinancia/admin.py (fragmento)
-from django.contrib import admin, messages
-from django.db import transaction
-from django.utils import timezone
-
-#from .models import Desembolsos,  Bitacora
-#from . import utils  # importa las funciones definidas en utils.py
-from .utils import create_prestamo  # importa las funciones definidas en utils.py
-from .utils import create_movimiento  # importa las funciones definidas en services
-#from .utils import create_historia_prestamo  # importa las funciones definidas en services
-from .utils import calculate_loan_schedule, create_loan_payments
-from django.contrib import admin
-from django.shortcuts import get_object_or_404
-from django.urls import path, reverse
-from .models import Desembolsos, Comentarios_Prestamos, Comentarios
-from .forms import ComentarioPrestamoForm
-from .utils import cerrar_periodo_interes, aplicar_pago_cuota_inicial 
-from django.core.exceptions import ValidationError
-
- 
-#from .models import Menu
-
-# Register your models here.
-
-# inicio-para personalizar el Panel Administrador Django 20251031
-# Personalización del título y encabezados
-admin.site.site_header = "Sistema Financia Seguros - Panel de Administración"
-admin.site.site_title = "Sistema Financia Admin"
-admin.site.index_title = "Gestión del Sistema Financiero"
-
-# admin.py
-# appfinancia/admin.py
-from django.contrib import admin
-from django.urls import path
-from django.http import HttpResponse
-from django.contrib import messages
-from django.urls import reverse
-
-
-# fin-para personalizar el Panel Administrador Django  ************
-
-#Para los formatos de número
-#--------------------------------------------------------------------------------------
-
-# appfinancia/admin.py
-#from django.contrib import admin
-#from django import forms
-from .models import Fechas_Sistema
+# ======================================================
+# 2. LIBRERÍAS DE TERCEROS (DJANGO)
+# ======================================================
 from django import forms
+from django.conf import settings
+from django.utils import timezone
+from django.forms import TextInput
+from django.urls import path, reverse
+from django.utils.http import urlencode 
+from django.utils.html import format_html
+from django.contrib import admin, messages
+from django.utils.safestring import mark_safe
+from django.core.management import call_command
+from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
+from django.db import models, transaction, IntegrityError
+from django.http import HttpResponse, FileResponse, Http404
+from django.contrib.admin import action, DateFieldListFilter
+from django.shortcuts import get_object_or_404, render, redirect
 
+# ======================================================
+# 3. IMPORTACIONES LOCALES (APPFINANCIA)
+# ======================================================
+
+# --- Modelos ---
+from .models import (
+    Asesores, Aseguradoras, Bitacora, Clientes, Comentarios, 
+    Comentarios_Prestamos, Conceptos_Transacciones, ConsultasReportesProxy,
+    Departamentos, Desembolsos, Fechas_Sistema, Financiacion, 
+    Historia_Prestamos, InBox_PagosCabezal, InBox_PagosDetalle, 
+    Municipios, Numeradores, Pagos, PagosParaRegularizar, Politicas, 
+    Prestamos, Tasas, Tipos_Identificacion, Vendedores,
+)
+
+# --- Formularios ---
+from .forms import ComentarioPrestamoForm
+
+# --- Utilidades (.utils) ---
+from .utils import (
+    aplicar_pago_cuota_inicial, calculate_loan_schedule, cerrar_periodo_interes,
+    confirmar_pagos, create_loan_payments, create_movimiento, create_prestamo,
+    f_anular_archivo, f_procesar_archivo, generar_reporte_excel_en_memoria,
+    get_next_conciliacion_id, InBox_Pagos
+)
+
+# --- Servicios (.services) ---
+from .services.conciliacion import conciliacion_por_movimiento, reporte_resumen_conciliacion
+from .services.reportes_pagos import generar_reporte_pagos_excel
+from .services.reportes_conciliacion import generar_reporte_conciliacion_excel
+from .services.financiacion_imap import procesar_emails
+from .services.financiacion_aprobacion import f_aprobar_financiacion, f_reenvio_correo_financiacion
+from .services.financiacion_pdf import f_generar_pdf_plan_pagos
+from .services.financiacion_plan_pagos import f_plan_pagos_cuota_fija
+from .services.financiacion_correo_aprobacion import f_correo_aprobacion
+
+from appfinancia.services.financiacion_validaciones import f_validar_financiacion_form
+from appfinancia.services.financiacion_plan_pagos import f_plan_pagos_cuota_fija
+
+# --- Vistas ---
+from .views import (
+    consulta_causacion_view, balance_operaciones_view, prestamos_vencidos_view
+)
+
+# ----------------------------------------------------------------------------------------
+class AdminBaseMoneda(admin.ModelAdmin):
+    formfield_overrides = {
+        models.DecimalField: {
+            "widget": TextInput(attrs={"class": "vTextField"})
+        }
+    }
+
+    class Media:
+        js = ('appfinancia/js/moneda_admin_global.js',)
+
+#-----------------------------------------------------------------------------------------
 class FechasSistemaForm(forms.ModelForm):
     class Meta:
         model = Fechas_Sistema
@@ -64,21 +93,20 @@ class FechasSistemaForm(forms.ModelForm):
             for field in ['fecha_proceso_anterior', 'fecha_proceso_actual', 'fecha_proximo_proceso']:
                 self.fields[field].disabled = True
                 self.fields[field].help_text = "🔒 Solo editable en modo 'Manual'."
-
+                
+#-----------------------------------------------------------------------------------------
 @admin.register(Fechas_Sistema)
 class FechasSistemaAdmin(admin.ModelAdmin):
     form = FechasSistemaForm
     list_display = (
-        'fecha_proceso_actual',
-        'estado_sistema_colored',
-        'modo_fecha_sistema',
-        'fecha_ultima_modificacion',
-        'cambiado_por',
+        'fecha_proceso_actual','estado_sistema_colored', 'modo_fecha_sistema',
+        'fecha_ultima_modificacion', 'cambiado_por',
     )
 
     def estado_sistema_colored(self, obj):
         color = 'green' if obj.estado_sistema == 'ABIERTO' else 'red'
         return f'<span style="color:{color}; font-weight:bold;">{obj.get_estado_sistema_display()}</span>'
+
     estado_sistema_colored.short_description = "Estado"
     estado_sistema_colored.allow_tags = True
 
@@ -91,12 +119,8 @@ class FechasSistemaAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         obj._request = request  # pasar request para asignar cambiado_por
         super().save_model(request, obj, form, change)
-        
-        
 
-#1---------------------------------------------------------------------------------------*
-from .models import Tipos_Identificacion
-
+#-----------------------------------------------------------------------------------------
 @admin.register(Tipos_Identificacion)
 class TiposIdentificacionAdmin(admin.ModelAdmin):
     list_display = ('tipo_id', 'descripcion_id')
@@ -109,9 +133,7 @@ class TiposIdentificacionAdmin(admin.ModelAdmin):
             return ('tipo_id',)
         return ()
 
-#2---------------------------------------------------------------------------------------*
-from .models import Asesores
-
+#-----------------------------------------------------------------------------------------
 @admin.register(Asesores)
 class AsesoresAdmin(admin.ModelAdmin):
     list_display = ('asesor_id', 'asesor_nombre', 'asesor_estado', 'fecha_creacion')
@@ -135,10 +157,8 @@ class AsesoresAdmin(admin.ModelAdmin):
         if obj:  # Si ya existe, bloquear asesor_Id y fecha_creacion
             return self.readonly_fields + ('asesor_Id',)
         return self.readonly_fields
-        
-#3---------------------------------------------------------------------------------------*
-from .models import Aseguradoras
 
+#-----------------------------------------------------------------------------------------
 @admin.register(Aseguradoras)
 class AseguradorasAdmin(admin.ModelAdmin):
     list_display = ('aseguradora_id', 'aseguradora_nombre', 'aseguradora_estado', 'fecha_creacion')
@@ -163,15 +183,7 @@ class AseguradorasAdmin(admin.ModelAdmin):
             return self.readonly_fields + ('aseguradora_id',)
         return self.readonly_fields
 
-        
-#4---------------------------------------------------------------------------------------*
-#from .models import Tasas
-#@admin.register(Tasas)
-#class TasasAdmin(admin.ModelAdmin):
-#    list_display = ['tipo_tasa', 'valor_tasa']  
-
-from .models import Tasas
-
+#-----------------------------------------------------------------------------------------
 @admin.register(Tasas)
 class TasasAdmin(admin.ModelAdmin):
     list_display = ('tipo_tasa', 'tasa')
@@ -183,9 +195,7 @@ class TasasAdmin(admin.ModelAdmin):
             return ('tipo_tasa',)
         return ()
 
-#5---------------------------------------------------------------------------------------*
-from .models import Departamentos
-
+#-----------------------------------------------------------------------------------------
 @admin.register(Departamentos)
 class DepartamentosAdmin(admin.ModelAdmin):
     list_display = ('departamento_id', 'departamento_nombre')
@@ -198,9 +208,7 @@ class DepartamentosAdmin(admin.ModelAdmin):
             return ('departamento_id',)
         return ()
 
-#6---------------------------------------------------------------------------------------*
-from .models import Municipios
-
+#-----------------------------------------------------------------------------------------
 @admin.register(Municipios)
 class MunicipiosAdmin(admin.ModelAdmin):
     list_display = ('municipio_id', 'departamento', 'municipio_nombre')
@@ -225,9 +233,7 @@ class MunicipiosAdmin(admin.ModelAdmin):
             return ('municipio_id', 'departamento')
         return ()
 
-#7---------------------------------------------------------------------------------------*
-from .models import Vendedores
-
+#-----------------------------------------------------------------------------------------
 @admin.register(Vendedores)
 class VendedoresAdmin(admin.ModelAdmin):
     list_display = ('cod_venta_id', 'cod_venta_nombre', 'estado', 'fecha_creacion')
@@ -251,13 +257,8 @@ class VendedoresAdmin(admin.ModelAdmin):
         if obj:  # Si el registro ya existe
             return self.readonly_fields + ('cod_venta_id',)
         return self.readonly_fields
-        
-#8---------------------------------------------------------------------------------------*
-# admin.py
-#from django.contrib import admin
-#from django.contrib import messages
-from .models import Numeradores
 
+#-----------------------------------------------------------------------------------------
 @admin.register(Numeradores)
 class NumeradoresAdmin(admin.ModelAdmin):
     list_display = (
@@ -277,12 +278,8 @@ class NumeradoresAdmin(admin.ModelAdmin):
             )
         }),
         ('Contadores Auxiliares', {
-            'fields': (
-                'numerador_aux_1',
-                'numerador_aux_2',
-                'numerador_aux_3',
-                'numerador_aux_4',
-                'numerador_aux_5'
+            'fields': ('numerador_aux_1','numerador_aux_2', 'numerador_aux_3',
+                'numerador_aux_4', 'numerador_aux_5'
             ),
             'classes': ('collapse',)
         }),
@@ -310,29 +307,38 @@ class NumeradoresAdmin(admin.ModelAdmin):
                     messages.error(request, f"{field}: {err}")
         except Exception as e:
             messages.error(request, f"❌ Error: {e}")
-        
-        
-#9---------------------------------------------------------------------------------------*
-from .models import Clientes
 
+#-----------------------------------------------------------------------------------------
+# admin.py
 @admin.register(Clientes)
 class ClientesAdmin(admin.ModelAdmin):
     list_display = (
         'cliente_id', 'tipo_id', 'nombre', 'apellido',
         'email', 'telefono', 'estado',
-        'departamento', 'municipio', 'fecha_creacion'
     )
-    search_fields = ('cliente_id', 'nombre', 'apellido', 'email', 'direccion')
-    list_filter = ('estado', 'departamento', 'municipio', 'tipo_id', 'fecha_creacion')
+
+    search_fields = (
+        "cliente_id__icontains",
+        "nombre__icontains",
+        "apellido__icontains",
+        "email",
+        "direccion"
+    )
+
+    list_filter = ('tipo_id', 'fecha_creacion')
     ordering = ('apellido', 'nombre')
+    list_per_page = 14
 
     fieldsets = (
         ('Identificación', {
             'fields': ('cliente_id', 'tipo_id'),
-            'description': "ID único y tipo de identificación del cliente."
         }),
         ('Información Personal', {
-            'fields': ('nombre', 'apellido', 'fecha_nacimiento', 'email', 'telefono', 'direccion')
+            'fields': (
+                'nombre', 'apellido',
+                'fecha_nacimiento',
+                'email', 'telefono', 'direccion'
+            )
         }),
         ('Ubicación', {
             'fields': ('departamento', 'municipio')
@@ -344,36 +350,52 @@ class ClientesAdmin(admin.ModelAdmin):
 
     readonly_fields = ('fecha_creacion',)
 
+    # ---------------------------------------
+    # 🔒 BLOQUEAR cliente_id SI YA EXISTE
+    # ---------------------------------------
     def get_readonly_fields(self, request, obj=None):
-        if obj:  # Si ya existe, bloquear cliente_id y fecha_creacion
+        if obj:
             return self.readonly_fields + ('cliente_id',)
         return self.readonly_fields
 
+    # ---------------------------------------
+    # 🔁 VINCULAR FINANCIACIÓN DESPUÉS DE CREAR CLIENTE
+    # ---------------------------------------
     def save_model(self, request, obj, form, change):
-        obj.full_clean()  # Ejecuta las validaciones personalizadas
+        # 1. Primero guardamos el cliente para que tenga un ID en la base de datos
         super().save_model(request, obj, form, change)
 
-#10---------------------------------------------------------------------------------------*
-#DESEMBOLSOS Y COMENTARIOS_PRESTAMOS
-#-----------------------------------------------------------------------------------------*    
-# appfinancia/admin.py
+        # 2. Ahora que obj existe y está guardado, vinculamos las financiaciones
+        # Verificamos que el cliente_id no sea None para evitar errores
+        if obj.cliente_id:
+            Financiacion.objects.filter(
+                numero_documento=obj.cliente_id,
+                cliente__isnull=True
+            ).update(cliente=obj)
 
-from django.contrib import admin
-from django.utils.html import format_html
-from django.core.exceptions import ValidationError
+    # ---------------------------------------
+    # 📥 DATOS QUE VIENEN DESDE FINANCIACIÓN
+    # ---------------------------------------
+    
+    '''
+    def get_changeform_initial_data(self, request):
+        initial = super().get_changeform_initial_data(request)
 
-from .models import Desembolsos, Comentarios_Prestamos
+        initial["cliente_id"] = request.GET.get("numero_documento")
+        initial["nombre"] = request.GET.get("nombre")
+        initial["email"] = request.GET.get("correo")
+        initial["telefono"] = request.GET.get("telefono")
 
-
-# ===================================================================
-# INLINE DE COMENTARIOS
-# ===================================================================
+        return initial
+    '''
+    
+#-----------------------------------------------------------------------------------------
 class ComentarioInline(admin.TabularInline):
     model = Comentarios_Prestamos
     extra = 1
     readonly_fields = (
-        #'numero_comentario',
-        #'comentario_catalogo',
+        # 'numero_comentario',
+        # 'comentario_catalogo',
         'fecha_comentario',
         'creado_por',
     )
@@ -394,28 +416,23 @@ class ComentarioInline(admin.TabularInline):
     def has_delete_permission(self, request, obj=None):
         return True
     '''
-# ===================================================================
-# ADMIN PRINCIPAL DE DESEMBOLSOS
-# ===================================================================
+
+#-----------------------------------------------------------------------------------------
 @admin.register(Desembolsos)
-class DesembolsosAdmin(admin.ModelAdmin):
-    list_display = (
-        'prestamo_id',
-        'cliente_id_display',
-        'valor_formatted',
-        'estado_colored',
-        'fecha_desembolso',
+class DesembolsosAdmin(AdminBaseMoneda):
+    list_display = ('prestamo_id','cliente_id_display','valor_formatted',
+        'estado_colored', 'fecha_desembolso',
     )
     list_filter = ('estado',)
-    search_fields = ('=prestamo_id', '=cliente_id__cliente_id', 'cliente_id__nombre')  #2025/12/05/pam
+    search_fields = ('=prestamo_id', '=cliente_id__cliente_id', 'cliente_id__nombre')
     ordering = ('-fecha_desembolso',)
     inlines = [ComentarioInline]
     exclude = ('valor_cuota_mensual',)
- 
+
     # Campos siempre de solo lectura
     readonly_fields_base = ('prestamo_id', 'fecha_vencimiento', 'fecha_creacion')
-    
 
+    list_per_page = 14
 
     # ------------------------------------------------------------------
     # Diseño del formulario
@@ -425,10 +442,8 @@ class DesembolsosAdmin(admin.ModelAdmin):
             'fields': ('prestamo_id', 'cliente_id', 'asesor_id', 'aseguradora_id', 'vendedor_id')
         }),
         ('Tasa y Valores', {
-            'fields': (
-                'tipo_tasa', 'tasa',
-                'valor', 'valor_cuota_1', 'numero_transaccion_cuota_1',
-                'valor_seguro_mes', 'tiene_fee'
+            'fields': ('tipo_tasa', 'tasa', 'valor', 'valor_cuota_1', 
+            'numero_transaccion_cuota_1','valor_seguro_mes', 'tiene_fee'
             )
         }),
         ('Condiciones', {
@@ -444,10 +459,12 @@ class DesembolsosAdmin(admin.ModelAdmin):
     # ------------------------------------------------------------------
     def cliente_id_display(self, obj):
         return f"{obj.cliente_id.cliente_id} - {obj.cliente_id}"
+
     cliente_id_display.short_description = "Cliente"
 
     def valor_formatted(self, obj):
         return f"${obj.valor:,.0f}"
+
     valor_formatted.short_description = "Valor"
 
     def estado_colored(self, obj):
@@ -466,6 +483,7 @@ class DesembolsosAdmin(admin.ModelAdmin):
         color = colores.get(obj.estado, '#7f8c8d')
         texto = textos.get(obj.estado, obj.estado)
         return format_html('<b style="color:{};">{}</b>', color, texto)
+
     estado_colored.short_description = "Estado"
 
     # ------------------------------------------------------------------
@@ -498,13 +516,11 @@ class DesembolsosAdmin(admin.ModelAdmin):
     # Acciones masivas
     # ------------------------------------------------------------------
     actions = ['procesar_desembolsos_pendientes', 'anular']
-    
-    #2025-11-25 6:52am traslado funcion pasar_a_desembolsado a utils.py
-
 
     def anular(self, request, queryset):
         updated = queryset.exclude(estado='ANULADO').update(estado='ANULADO')
         self.message_user(request, f"{updated} desembolso(s) anulado(s).")
+
     anular.short_description = "Anular"
 
     # ------------------------------------------------------------------
@@ -519,44 +535,35 @@ class DesembolsosAdmin(admin.ModelAdmin):
             super().save_model(request, obj, form, change)
         except ValidationError as e:
             self.message_user(request, f"Error al guardar: {e}", level='error')
-            
-    #bloque de código para inyectar el java script, debe ir dentro una clase. 2025/11/25 pam  
+
+    # bloque de código para inyectar el java script, debe ir dentro una clase. 2025/11/25 pam
+    '''
     class Media:
         js = [
             'appfinancia/js/session-expiry.js',
             'appfinancia/js/number-format.js',
             'appfinancia/js/close-tab-logout.js',
         ]            
+    '''
 
-            
-#Fin Clase de Desembolso-----------------------------------------------------------------*
-
-
-    #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    #====================================== inicio  desembolsos   ======================= 2025-11-15 
-    from django.db import transaction
-    from django.contrib import messages
-    from django.utils import timezone
-    from django.contrib.admin import action
-    from .models import Desembolsos, Bitacora, Historia_Prestamos
-
+#-----------------------------------------------------------------------------------------
     @action(description="Procesar desembolsos pendientes A_DESEMBOLSAR")
     def procesar_desembolsos_pendientes(modeladmin, request, queryset):
         from .utils import get_next_asientos_id
         """-------------------------------------------------------------------------------------
         Action para el Django Admin: procesa todos los desembolsos en estado 'A_DESEMBOLSAR'.
         Crea registros en Prestamos, Movimientos, Historia_Prestamos y calcula el plan de pagos.
-        ----------------------------------------------------------------------------------------"""  
+        ----------------------------------------------------------------------------------------"""
         desembolsos_marcados = list(queryset.filter(estado="A_DESEMBOLSAR"))
         print(f"\n🔍 1. Inicio proceso. Cantidad: {len(desembolsos_marcados)}")
         if not desembolsos_marcados:
-            messages.warning(request, "⚠️ No hay desembolsos A_DESEMBOLSAR para procesar.")  
+            messages.warning(request, "⚠️ No hay desembolsos A_DESEMBOLSAR para procesar.")
             return
 
         try:
-            print(f"\n🔍 2. Entrando al try. Cantidad: {len(desembolsos_marcados)}")  
+            print(f"\n🔍 2. Entrando al try. Cantidad: {len(desembolsos_marcados)}")
             with transaction.atomic():
-                print(f"\n🔍 3. Dentro de transaction.atomic(). Cantidad: {len(desembolsos_marcados)}")  
+                print(f"\n🔍 3. Dentro de transaction.atomic(). Cantidad: {len(desembolsos_marcados)}")
                 # ✅ Obtener número de asiento contable único por desembolso
                 numero_asiento_desembolso = get_next_asientos_id()
                 for desembolso in desembolsos_marcados:
@@ -593,8 +600,8 @@ class DesembolsosAdmin(admin.ModelAdmin):
                     # 6.  Aplicar el pago de la cuota inicial 2025-11-28 
                     if desembolso.numero_transaccion_cuota_1 and desembolso.valor_cuota_1:
                         aplicar_pago_cuota_inicial(
-                            desembolso, 
-                            prestamo, 
+                            desembolso,
+                            prestamo,
                             usuario='sistema',
                             numero_asiento_contable=numero_asiento_desembolso  # ✅
                         )
@@ -633,14 +640,10 @@ class DesembolsosAdmin(admin.ModelAdmin):
                     proceso='ERROR',
                     resultado=error_msg
                 )
-    
+
     procesar_desembolsos_pendientes.short_description = "Pasar a Desembolsado"
-    #====================== fin desembolsos   =======================  2025-11-15 
 
-
-#11--------------------------------------------------------------------------------------* 
-from .models import Conceptos_Transacciones
-
+#-----------------------------------------------------------------------------------------
 @admin.register(Conceptos_Transacciones)
 class ConceptosTransaccionesAdmin(admin.ModelAdmin):
     list_display = ('concepto_id', 'codigo_transaccion', 'descripcion', 'estado')
@@ -670,28 +673,23 @@ class ConceptosTransaccionesAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         obj.full_clean()
         super().save_model(request, obj, form, change)
-#12--------------------------------------------------------------------------------------*
 
-# admin.py
-#from django.contrib import admin
-#from django.contrib import messages
-from .models import Comentarios
-
+#-----------------------------------------------------------------------------------------
 @admin.register(Comentarios)
 class ComentariosAdmin(admin.ModelAdmin):
     list_display = (
-        #'comentario_id',
+        # 'comentario_id',
         'operacion_id', 'evento_id',
         'comentario', 'estado'
     )
     search_fields = ('operacion_id', 'evento_id', 'comentario')
     list_filter = ('estado',)
     ordering = ('operacion_id', 'evento_id')
-    #readonly_fields = ('comentario_id',)
+    # readonly_fields = ('comentario_id',)
 
     fieldsets = (
         ('Identificación', {
-            #'fields': ('comentario_id', 'operacion_id', 'evento_id'),
+            # 'fields': ('comentario_id', 'operacion_id', 'evento_id'),
             'fields': ('operacion_id', 'evento_id'),
             'description': "La combinación (Operación, Evento) debe ser única."
         }),
@@ -721,178 +719,72 @@ class ComentariosAdmin(admin.ModelAdmin):
         except Exception as e:
             messages.error(request, f"Error al guardar: {e}")
 
-#13--------------------------------------------------------------------------------------*
-# appfinancia/admin.py
-
-#from django.contrib import admin
-#from django.utils.html import format_html
-#from .models import Comentarios_Prestamos
-
-"""
-@admin.register(Comentarios_Prestamos)
-class ComentariosPrestamosAdmin(admin.ModelAdmin):
-    list_display = (
-        'numero_comentario',
-        'prestamo_link',
-        'comentario_catalogo_link',
-        'operacion_id',
-        'evento_id',
-        'comentario_corto',
-        'creado_por',
-        'fecha_comentario'
-    )
-    list_display_links = ('numero_comentario',)
-    search_fields = (
-        'prestamo__prestamo_id',
-        'comentario_catalogo__operacion_id',
-        'comentario_catalogo__evento_id',
-        'comentario'
-    )
-    list_filter = (
-        'fecha_comentario',
-        'comentario_catalogo__estado',
-        'creado_por'
-    )
-    ordering = ('-fecha_comentario',)
-
-    # Formulario de creación
-    fieldsets = (
-        ('Préstamo y Comentario', {
-            'fields': ('prestamo', 'comentario_catalogo', 'comentario'),
-            'description': "⚠️ El campo 'comentario' es opcional (texto personalizado)."
-        }),
-    )
-
-    # Métodos personalizados para la lista
-    def prestamo_link(self, obj):
-        url = f"/admin/appfinancia/desembolsos/{obj.prestamo_id}/change/"
-        return format_html('<a href="{}">{}</a>', url, obj.prestamo_id)
-    prestamo_link.short_description = 'Préstamo ID'
-
-    def comentario_catalogo_link(self, obj):
-        url = f"/admin/appfinancia/comentarios/{obj.comentario_catalogo_id}/change/"
-        return format_html('<a href="{}">{}</a>', url, obj.comentario_catalogo)
-    comentario_catalogo_link.short_description = 'Comentario'
-
-    def operacion_id(self, obj):
-        return obj.operacion_id
-    operacion_id.short_description = 'Operación'
-
-    def evento_id(self, obj):
-        return obj.evento_id
-    evento_id.short_description = 'Evento'
-
-    def comentario_corto(self, obj):
-        return (obj.comentario[:50] + '...') if len(obj.comentario) > 50 else obj.comentario
-    comentario_corto.short_description = 'Comentario'
-
-    # 🔒 Permisos: solo crear y ver, no editar ni eliminar
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-    def has_add_permission(self, request):
-        return True
-
-    # ✅ Asignar automáticamente creado_por
-    def save_model(self, request, obj, form, change):
-        if not change:  # Solo al crear
-            obj.creado_por = request.user
-        super().save_model(request, obj, form, change)
-        
-"""
-        
-#14--------------------------------------------------------------------------------------*
-from .models import Politicas
-
-# appfinancia/admin.py
-#from django.contrib import admin
-from django import forms
-#from .models import Politicas
-
-# Formulario con formato colombiano (1.234.567,89)
-class PoliticasForm(forms.ModelForm):
-    class Meta:
-        model = Politicas
-        fields = '__all__'
-        widgets = {
-            'valor_cred_min': forms.TextInput(attrs={'placeholder': '1.000.000,00'}),
-            'valor_cred_max': forms.TextInput(attrs={'placeholder': '50.000.000,00'}),
-        }
-
-    def clean_valor_cred_min(self):
-        value = self.cleaned_data['valor_cred_min']
-        if isinstance(value, str):
-            value = value.replace('.', '').replace(',', '.')
-        return value
-
-    def clean_valor_cred_max(self):
-        value = self.cleaned_data['valor_cred_max']
-        if isinstance(value, str):
-            value = value.replace('.', '').replace(',', '.')
-        return value
-
-
+#-----------------------------------------------------------------------------------------
 @admin.register(Politicas)
-class PoliticasAdmin(admin.ModelAdmin):
-    form = PoliticasForm
-    list_display = ('edad_min', 'edad_max',
-                    'valor_cred_min', 'valor_cred_max',
-                    'porcentaje_min_cuota_ini', 'porcentaje_max_cuota_ini',
-                    'tasa_min', 'tasa_max',
-                    'plazo_min', 'plazo_max',
-                    'dias_max_desembolso_atras')        
-        
+class PoliticasAdmin(AdminBaseMoneda):
+    # ==========================
+    # LISTADO
+    # ==========================
+    list_display = ('edad_min','edad_max',
+        'valor_cred_min','valor_cred_max',
+        'porcentaje_min_cuota_ini','porcentaje_max_cuota_ini',
+        'tasa_min','tasa_max',
+        'plazo_min','plazo_max',
+        'dias_max_desembolso_atras',
+    )
+
+    # ==========================
+    # SOLO LECTURA
+    # ==========================
     readonly_fields = ('id',)
 
+    # ==========================
+    # FIELDSETS
+    # ==========================
     fieldsets = (
-        (
-            'Edad del Cliente', {
+        ('👤 Edad del Cliente', {
             'fields': ('edad_min', 'edad_max'),
-            'description': '<small class="text-muted">Rango de edad permitido para solicitar crédito</small>'
+            'description': 'Rango de edad permitido para solicitar crédito',
         }),
-        ('Valor del Crédito', {
+        ('💰 Valor del Crédito', {
             'fields': ('valor_cred_min', 'valor_cred_max'),
-            'description': '<small class="text-muted">Use punto como decimal y coma como separador de miles</small>'
+            'description': 'Formato automático con separador de miles y decimales',
         }),
-        ('Cuota Inicial (%)', {
-            'fields': ('porcentaje_min_cuota_ini', 'porcentaje_max_cuota_ini')
+        ('📊 Cuota Inicial (%)', {
+            'fields': ('porcentaje_min_cuota_ini', 'porcentaje_max_cuota_ini'),
         }),
-        ('Tasas de Interés Mensual (%)', {
-            'fields': ('tasa_min', 'tasa_max')
+        ('📈 Tasas de Interés Mensual (%)', {
+            'fields': ('tasa_min', 'tasa_max'),
         }),
-        ('Plazo del Crédito', {
-            'fields': ('plazo_min', 'plazo_max')
+        ('📅 Plazo del Crédito', {
+            'fields': ('plazo_min', 'plazo_max'),
         }),
-        ('Dias permitidos con fechas atras para desembolsos', {
-            'fields': ('dias_max_desembolso_atras',)
+        ('⏱ Días permitidos para desembolsos atrasados', {
+            'fields': ('dias_max_desembolso_atras',),
         }),
     )
 
-    # Solo permite 1 registro
+    # ==========================
+    # REGLAS DE NEGOCIO
+    # ==========================
     def has_add_permission(self, request):
+        """Solo se permite un registro de políticas"""
         return not Politicas.objects.exists()
 
     def has_delete_permission(self, request, obj=None):
-        return False  # Nunca se puede borrar
+        """Las políticas nunca se eliminan"""
+        return False
 
     def changelist_view(self, request, extra_context=None):
+        """
+        Garantiza que siempre exista un registro de políticas
+        """
         if not Politicas.objects.exists():
             Politicas.load().save()
         return super().changelist_view(request, extra_context)
 
-
-#15--------------------------------------------------------------------------------------*
-# appfinancia/admin.py
-
-from django.contrib import admin
-from django.contrib import admin
-from datetime import date
-from .models import Prestamos, Fechas_Sistema
-
-class ConAtrasoFilter(admin.SimpleListFilter):    #esta clase debe ir antes de PrestamosAdmin
+#-----------------------------------------------------------------------------------------
+class ConAtrasoFilter(admin.SimpleListFilter):  # esta clase debe ir antes de PrestamosAdmin
     title = 'Préstamos con atraso'
     parameter_name = 'con_atraso'
 
@@ -921,10 +813,7 @@ class ConAtrasoFilter(admin.SimpleListFilter):    #esta clase debe ir antes de P
             ).distinct()
         return queryset
 
-#16--------------------------------------------------------------------------------------* 
-#   2025-11-15 Incluyo metodos para consultar cuotas pagadas, proyectadas, saldo pendiente
-# appfinancia/admin.py
-
+#-----------------------------------------------------------------------------------------
 from django.contrib import admin
 from django.urls import path, reverse
 from django.utils.html import format_html
@@ -938,39 +827,109 @@ from .models import (
     Historia_Prestamos,
     Fechas_Sistema,
 )
-from .utils import generar_reporte_excel_en_memoria
+
+#---- filtro por rangos dias de  atraso
+import datetime
+from django.contrib import admin
+from django.db.models import Q
+from django.utils.translation import gettext_lazy as _
+
+class DiasAtrasoFilter(admin.SimpleListFilter):
+    title = _('Rango de Atraso')
+    parameter_name = 'rango_mora'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('0_5', _('0 a 5 días')),
+            ('6_30', _('6 a 30 días')),
+            ('31_90', _('31 a 90 días')),
+            ('mas_90', _('Más de 90 días')),
+        )
+
+    def queryset(self, request, queryset):
+        from .models import Fechas_Sistema
+        
+        # Obtenemos la fecha actual del negocio
+        fs = Fechas_Sistema.objects.first()
+        if not fs or not self.value():
+            return queryset
+        
+        fecha_corte = fs.fecha_proceso_actual
+        
+        # Definimos los deltas de tiempo
+        hace_5_dias = fecha_corte - datetime.timedelta(days=5)
+        hace_6_dias = fecha_corte - datetime.timedelta(days=6)
+        hace_30_dias = fecha_corte - datetime.timedelta(days=30)
+        hace_31_dias = fecha_corte - datetime.timedelta(days=31)
+        hace_90_dias = fecha_corte - datetime.timedelta(days=90)
+
+        # Filtro base: Solo cuotas PENDIENTES
+        base_filter = Q(historia_prestamos__estado='PENDIENTE')
+
+        if self.value() == '0_5':
+            # Vencidas entre hoy y hace 5 días
+            return queryset.filter(
+                base_filter,
+                historia_prestamos__fecha_vencimiento__lte=fecha_corte,
+                historia_prestamos__fecha_vencimiento__gte=hace_5_dias
+            ).distinct()
+
+        if self.value() == '6_30':
+            # Vencidas entre hace 6 y hace 30 días
+            return queryset.filter(
+                base_filter,
+                historia_prestamos__fecha_vencimiento__lte=hace_6_dias,
+                historia_prestamos__fecha_vencimiento__gte=hace_30_dias
+            ).distinct()
+
+        if self.value() == '31_90':
+            # Vencidas entre hace 31 y hace 90 días
+            return queryset.filter(
+                base_filter,
+                historia_prestamos__fecha_vencimiento__lte=hace_31_dias,
+                historia_prestamos__fecha_vencimiento__gte=hace_90_dias
+            ).distinct()
+
+        if self.value() == 'mas_90':
+            # Vencidas hace más de 90 días
+            return queryset.filter(
+                base_filter,
+                historia_prestamos__fecha_vencimiento__lt=hace_90_dias
+            ).distinct()
+
+        return queryset
+        
 
 
+#-----------------------------------------------------------------------------------------
+#   2025-11-15 Incluyo metodos para consultar cuotas pagadas, proyectadas, saldo pendiente
 @admin.register(Prestamos)
 class PrestamosAdmin(admin.ModelAdmin):
-   list_display = [
-        'prestamo_id', 'saldo_pendiente_formateado', 
-        'monto_atrasado_display', #funciona
-         'cuotas_atrasadas_display',  #funciona
-         'dias_atraso_display',      #funciona 
-         'ver_estado_cuenta_link',
+    list_display = [
+        'prestamo_id',
+        'monto_atrasado_formateado',  
+        'cuotas_atrasadas_display',
+        'dias_atraso_display',
+        'tiene_oneroso',
+        'total_pendiente_real_formateado',
+        'ver_estado_cuenta_link',
         'ver_plan_pagos_link',
-        'fecha_desembolso',
     ]
     
     search_fields = [
-        #'=cliente_id',           # 'cliente_id__nombre' Si tienes un campo 'nombre' en Clientes
-        #'=asesor_id',           # 'asesor_id__nombre'
-        #'prestamo_id__id',     # Si quieres buscar por el ID del desembolso
-        'prestamo_id__prestamo_id__exact',        # Si quieres buscar por el ID del desembolso. 2025/1202.pam
-        'cliente_id__cliente_id__exact', 
-		#'cliente_id__nombre',
-		'asesor_id__asesor_id__exact',
-		#'asesor_id__nombre',  
-    ]
+            'prestamo_id__prestamo_id', # Entra a Desembolsos y busca por ID numérico
+            'cliente_id__cliente_id',   # Busca por el número de identificación (BigIntegerField)
+            'cliente_id__nombre',       # Busca por nombre del cliente
+            'cliente_id__apellido',     # Busca por apellido del cliente
+        ]
     
-    list_filter = ('fecha_desembolso',)
-    ordering = ('fecha_desembolso',)
+    list_filter = (DiasAtrasoFilter, 'tipo_tasa', 'tiene_oneroso')   
+    ordering = ('prestamo_id',)
     list_per_page = 14
 
     readonly_fields = (
         'prestamo_id',
-        'fecha_vencimiento',
+        'fecha_vencimiento', 'tasa_mes', 'tasa', #2026-01-09
         'fecha_desembolso',
         'enlace_reporte',
          'saldo_pendiente_formateado',  # Opcional: si quieres verlo en detalle
@@ -983,15 +942,55 @@ class PrestamosAdmin(admin.ModelAdmin):
         }),
         ('Tasa y Valores', {
             'fields': (
-                'tipo_tasa', 'tasa',
+                'tipo_tasa', 'tasa_mes', 'tasa',
                 'valor', 'valor_cuota_1',
                 'valor_cuota_mensual', 'valor_seguro_mes', 'tiene_fee'
             )
         }),
         ('Condiciones', {
-            'fields': ('dia_cobro', 'plazo_en_meses', 'fecha_desembolso', 'fecha_vencimiento')
+            'fields': ('dia_cobro', 'plazo_en_meses', 'fecha_desembolso', 'fecha_vencimiento', 'tiene_oneroso', 'entidad_onerosa')
         }),
     )
+
+    #nuevos formateos --- 2025-12-21 mags.-
+    def _format_currency(self, value):
+        """Helper para formatear moneda consistentemente."""
+        try:
+            val = float(value) if value is not None else 0.0
+            return f"${val:,.2f}"
+        except (TypeError, ValueError):
+            return "Error"
+
+    def _colored_span(self, value, positive_color="red", zero_color="green"):
+        """Helper para colorear valores."""
+        try:
+            val = float(value)
+            color = positive_color if val > 0 else zero_color
+            return format_html('<span style="color: {}; font-weight: bold;">{}</span>', color, self._format_currency(value))
+        except:
+            return format_html('<span style="color: gray;">Error</span>')
+
+    # --- Nuevos displays --- 2025-12-21 mags.-
+    def saldo_capital_formateado(self, obj):
+        return self._colored_span(obj.saldo_capital_pendiente())
+    saldo_capital_formateado.short_description = "Saldo Capital"
+
+    def intereses_vencidos_formateado(self, obj):
+        return self._colored_span(obj.intereses_vencidos_no_pagados())
+    intereses_vencidos_formateado.short_description = "Int. Vencidos"
+
+    def seguros_vencidos_formateado(self, obj):
+        return self._colored_span(obj.seguros_vencidos_no_pagados())
+    seguros_vencidos_formateado.short_description = "Seg. Vencidos"
+
+    def total_pendiente_real_formateado(self, obj):
+        return self._colored_span(obj.total_pendiente_real(), positive_color="darkred")
+    total_pendiente_real_formateado.short_description = "Total Adeudado"
+
+    def monto_atrasado_formateado(self, obj):
+        return self._colored_span(obj.monto_atrasado())
+    monto_atrasado_formateado.short_description = "Monto Atrasado"
+
 
 
 
@@ -1060,7 +1059,7 @@ class PrestamosAdmin(admin.ModelAdmin):
         prestamo_id_valor = obj.prestamo_id_id
         if prestamo_id_valor and isinstance(prestamo_id_valor, int) and prestamo_id_valor > 0:
             try:
-                url = reverse('plan_pagos', kwargs={'prestamo_id': prestamo_id_valor})
+                url = reverse('appfinancia:plan_pagos', kwargs={'prestamo_id': prestamo_id_valor})
                 return format_html('<a href="{}" target="_blank">Ver Plan de Pagos</a>', url)
             except Exception:
                 return format_html('<span style="color: red;">Error en URL</span>')
@@ -1101,10 +1100,31 @@ class PrestamosAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.generar_reporte_detalle),
                 name='appfinancia_prestamos_reporte_excel',
             ),
+            path(
+                'estado-cuenta/<int:prestamo_id>/',
+                self.admin_site.admin_view(self.estado_cuenta_view),
+                name='appfinancia_prestamos_estado_cuenta',
+            ),
+            path(
+                'estado-cuenta/<int:prestamo_id>/excel/',
+                self.admin_site.admin_view(self.generar_excel_estado_cuenta_view),
+                name='appfinancia_prestamos_estado_cuenta_excel',
+            ),
         ]
         return custom_urls + urls
+    
+    
+    # ✅ En admin.py: solo wrappers ligeros 
+    def estado_cuenta_view(self, request, prestamo_id):
+        from .views import estado_cuenta
+        return estado_cuenta(request, prestamo_id)
+
+    def generar_excel_estado_cuenta_view(self, request, prestamo_id):
+        from .views import generar_excel_estado_cuenta_view
+        return generar_excel_estado_cuenta_view(request, prestamo_id)                                                              
 
     def generar_reporte_detalle(self, request, prestamo_id):
+        from utils import generar_reporte_excel_en_memoria
         prestamo = get_object_or_404(Prestamos, prestamo_id=prestamo_id)
         buffer = generar_reporte_excel_en_memoria(prestamo_id)
         response = HttpResponse(
@@ -1131,7 +1151,7 @@ class PrestamosAdmin(admin.ModelAdmin):
             prestamo = queryset.first()
             # 🔑 Corrección clave: usar _id para obtener el valor numérico
             prestamo_id_valor = prestamo.prestamo_id_id  # ← esto es un entero
-
+            from .utils import generar_reporte_excel_en_memoria
             buffer = generar_reporte_excel_en_memoria(prestamo_id_valor)
 
             response = HttpResponse(
@@ -1154,29 +1174,29 @@ class PrestamosAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         obj.full_clean()
         super().save_model(request, obj, form, change)
+        
     #
     #-------------------- para el estado de cuenta: ----
     def ver_estado_cuenta_link(self, obj):
+        from django.urls import reverse
         from django.utils.html import format_html
-        prestamo_id_valor = obj.prestamo_id_id
 
-        if prestamo_id_valor and isinstance(prestamo_id_valor, int) and prestamo_id_valor > 0:
+        # Asegurarse de que obj.prestamo_id y su ID numérico existen
+        if obj.prestamo_id and hasattr(obj.prestamo_id, 'prestamo_id') and obj.prestamo_id.prestamo_id:
             try:
-                from django.urls import reverse
-                url = reverse('estado_cuenta', kwargs={'prestamo_id': prestamo_id_valor})
+                prestamo_id_num = obj.prestamo_id.prestamo_id  # ← este es el entero
+                url = reverse('admin:appfinancia_prestamos_estado_cuenta', args=[prestamo_id_num])
                 return format_html('<a href="{}" target="_blank">Ver Estado de Cuenta</a>', url)
-            except Exception:
+            except Exception as e:
+                # Opcional: imprime el error en los logs para depuración
+                # print(f"Error generando URL para préstamo {prestamo_id_num}: {e}")
                 return format_html('<span style="color: red;">Error en URL</span>')
         else:
             return format_html('<span style="color: gray;">N/A</span>')
 
     ver_estado_cuenta_link.short_description = 'Estado de Cuenta'
-#17--------------------------------------------------------------------------------------*
-from django.contrib import admin
-from .models import Historia_Prestamos
 
-# appfinancia/admin.py
-
+#-----------------------------------------------------------------------------------------
 class HistoriaPrestamosAdmin(admin.ModelAdmin):
     # Usamos los campos reales del modelo
     list_display = (
@@ -1192,8 +1212,9 @@ class HistoriaPrestamosAdmin(admin.ModelAdmin):
         'fecha_proceso'
     )
     list_filter = ('prestamo_id',)
-    #search_fields = ('prestamo_id','numero_cuota')
-    search_fields = ('prestamo_id__prestamo_id__exact','numero_cuota')
+    # search_fields = ('prestamo_id','numero_cuota')
+    # search_fields = ('prestamo_id__prestamo_id__exact','numero_cuota')
+    search_fields = ('prestamo_id', 'numero_cuota')
     readonly_fields = (
         'id',
         'prestamo_id',
@@ -1214,10 +1235,10 @@ class HistoriaPrestamosAdmin(admin.ModelAdmin):
         'tasa'
     )
     list_per_page = 14
-    
+
     # Eliminamos fieldsets para mostrar todos los campos readonly
     # (o puedes personalizarlo sin detalle_breve)
-    
+
     def has_add_permission(self, request):
         return False
 
@@ -1225,19 +1246,13 @@ class HistoriaPrestamosAdmin(admin.ModelAdmin):
         return False
 
 admin.site.register(Historia_Prestamos, HistoriaPrestamosAdmin)
-#18--------------------------------------------------------------------------------------*
 
-#2025-11-15 Elimino Plan_Pagos
-
-
-#18---------------------------------------------------------------------------------------------*
-
-from .models import Bitacora
+#-----------------------------------------------------------------------------------------
 @admin.register(Bitacora)
-
 class BitacoraAdmin(admin.ModelAdmin):
     # Solo permite ver, no crea, edita ni elimina
-    list_display = ('secuencial', 'fecha_hora', 'fecha_proceso', 'user_name', 'evento_realizado', 'proceso', 'resultado')
+    list_display = ('secuencial', 'fecha_hora', 'fecha_proceso', 'user_name', 'evento_realizado', 'proceso',
+                    'resultado')
     readonly_fields = [field.name for field in Bitacora._meta.fields]  # Todos los campos son solo lectura
     ordering = ['-secuencial']  # Orden descendente por secuencial
     list_filter = ('fecha_proceso', 'user_name', 'proceso')  # Opcional: filtros
@@ -1253,138 +1268,11 @@ class BitacoraAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False  # No permite eliminar
 
-
-#=========================================================================================        
-# === CONTROL DE ARCHIVOS DE PAGOS === 2025/11/24       
-#=========================================================================================
-
-from django.contrib import admin
-from django import forms
-from django.contrib import messages
-from django.utils.safestring import mark_safe
-from .models import Pagos
-
-
-#admin.site.register(Pagos_Archivos, Pagos_Archivos_Admin)
-admin.site.register(Pagos)
-
-        
-#23---------------------------------------------------------------------------------------
-#=====CONTROL DE FECHAS DEL SISTEMA
-#-----------------------------------------------------------------------------------------
-# appfinancia/admin.py
-#from django.contrib import admin
-#from django import forms
-# appfinancia/admin.py
-
-#from django.contrib import admin
-#from django import forms
-#from django.utils.html import format_html
-from .models import Fechas_Sistema
-
-
-class FechasSistemaForm(forms.ModelForm):
-    class Meta:
-        model = Fechas_Sistema
-        fields = '__all__'
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Si ya existe y está en modo AUTOMÁTICO → bloquear fechas
-        if self.instance.pk and self.instance.modo_fecha_sistema == 'AUTOMATICO':
-            for field_name in ['fecha_proceso_anterior', 'fecha_proceso_actual', 'fecha_proximo_proceso']:
-                self.fields[field_name].disabled = True
-                self.fields[field_name].help_text = "🔒 Solo editable en modo 'Manual'."
-
-
-@admin.register(Fechas_Sistema)
-class FechasSistemaAdmin(admin.ModelAdmin):
-    form = FechasSistemaForm
-
-    list_display = (
-        'fecha_proceso_actual',
-        'estado_sistema_colored',
-        'modo_fecha_sistema',
-        'fecha_ultima_modificacion',
-        'cambiado_por',
-    )
-
-    # Campo con HTML seguro
-    def estado_sistema_colored(self, obj):
-        color = 'green' if obj.estado_sistema == 'ABIERTO' else 'red'
-        display = obj.get_estado_sistema_display()
-        return format_html(
-            '<span style="color: {}; font-weight: bold;">{}</span>',
-            color,
-            display
-        )
-    estado_sistema_colored.short_description = "Estado"
-
-    # --- Permisos ---
-    def has_add_permission(self, request):
-        # Solo permitir crear si no existe ningún registro
-        return not Fechas_Sistema.objects.exists()
-
-    def has_delete_permission(self, request, obj=None):
-        return False  # ⛔ Nunca permitir eliminar
-
-    # --- Guardar con usuario actual ---
-    def save_model(self, request, obj, form, change):
-        if not change:  # Creación
-            obj.cambiado_por = request.user
-        else:  # Edición
-            # Actualiza fecha_ultima_modificacion y cambiado_por siempre que se edite
-            obj.cambiado_por = request.user
-        super().save_model(request, obj, form, change)
-
-
-#Fin archivo 'admin.py' para imprimir el banner de la Fecha de proceso del sistema
-#*****************************************************************************************
-#Este bloque de código debe ir al final del archivo 'admin.py'
-# admin.py (al final del archivo)
-
-#*****************************************************************************************
-
-'''
-#from django.contrib.admin import AdminSite
-from appfinancia.utils import FechasSistemaHelper
-
-class CustomAdminSite(AdminSite):
-    def index(self, request, extra_context=None):
-        extra_context = extra_context or {}
-        extra_context['fecha_sistema'] = FechasSistemaHelper.get_fecha_proceso_actual()
-        return super().index(request, extra_context=extra_context)
-
-# Reemplaza el admin por defecto
-admin.site = CustomAdminSite()
-'''  
-#Fin fechas del sistema
+# admin.site.register(Pagos_Archivos, Pagos_Archivos_Admin)
+# admin.site.register(Pagos)  2025-12-14 comento esta linea porque no deja subir el server.-mags
 
 #-----------------------------------------------------------------------------------------
-#                       InBox
-#-----------------------------------------------------------------------------------------
-
-from django.contrib import admin, messages
-from django import forms
-from django.db import transaction, IntegrityError
-from .models import InBox_PagosCabezal, InBox_PagosDetalle
-from .utils import f_procesar_archivo, f_anular_archivo,InBox_Pagos
-#from .importacion_archivos import InBox_Pagos
-import os   # ← IMPORTANTE: evita el NameError
-
-#import os
-#from django.contrib import admin, messages
-#from django import forms
-
-#from .models import InBox_PagosCabezal
-#from .utils import f_procesar_archivo, f_anular_archivo
-
-
-# ================================================================
-# FORMULARIO PERSONALIZADO PARA CABEZAL
-# ================================================================
 class InBoxPagosCabezalForm(forms.ModelForm):
-
     archivo_subido = forms.FileField(
         required=True,
         label="Archivo a cargar",
@@ -1406,19 +1294,16 @@ class InBoxPagosCabezalForm(forms.ModelForm):
         self.fields["archivo_subido"].disabled = True
         self.fields["observaciones"].disabled = True
 
-
-# ================================================================
-# ADMIN PERSONALIZADO
-# ================================================================
+#-----------------------------------------------------------------------------------------
 @admin.register(InBox_PagosCabezal)
 class InBox_PagosCabezalAdmin(admin.ModelAdmin):
-
     form = InBoxPagosCabezalForm
-
-    # Asegurar funcionalidad de collapse en fieldsets
     class Media:
-        js = ("admin/js/jquery.init.js", "admin/js/collapse.js")
-
+        js = (
+            "admin/js/jquery.init.js", 
+            "admin/js/collapse.js",
+        )
+        
     # -------------------------------------------------------------
     # CONFIGURACIÓN ADMIN
     # -------------------------------------------------------------
@@ -1428,7 +1313,7 @@ class InBox_PagosCabezalAdmin(admin.ModelAdmin):
         'col_cargados',
         'col_rechazados',
         'col_estado_archivo',
-        'nombre_archivo_id',
+        'col_nombre_archivo',
     )
 
     list_filter = ('estado_proceso_archivo',)
@@ -1452,9 +1337,10 @@ class InBox_PagosCabezalAdmin(admin.ModelAdmin):
     fieldsets = (
         ("Datos del Archivo", {
             "fields": ("archivo_subido", "nombre_archivo_id", "observaciones"),
+            #"fields": ("nombre_archivo_id", "observaciones"),
         }),
         ("Resultados", {
-            "classes": ("collapse",),   # SECCIÓN OCULTA
+            "classes": ("collapse",),  # SECCIÓN OCULTA
             "fields": (
                 "valor_total",
                 "registros_cargados",
@@ -1463,7 +1349,7 @@ class InBox_PagosCabezalAdmin(admin.ModelAdmin):
             ),
         }),
         ("Auditoría", {
-            "classes": ("collapse",),   # SECCIÓN OCULTA
+            "classes": ("collapse",),  # SECCIÓN OCULTA
             "fields": ("fecha_carga_archivo", "creado_por"),
         }),
     )
@@ -1473,25 +1359,65 @@ class InBox_PagosCabezalAdmin(admin.ModelAdmin):
     # -------------------------------------------------------------
     actions = ["accion_procesar_archivo", "accion_anular_archivo"]
 
-    #-----------------------------------------------------
+    # --------colores al campo nombre_archivo---
+    def col_nombre_archivo(self, obj):
+        # Mapeo de colores según el campo 'formato'
+        colores = {
+            '1-FORMATO PSE': {
+                'bg': '#e3f2fd', 'fg': '#1565c0', 'icono': '📄'  # Azul (PDF)
+            },
+            '2-FORMATO ESTANDAR': {
+                'bg': '#e8f5e9', 'fg': '#2e7d32', 'icono': '📊'  # Verde (XLS)
+            },
+            '3-FORMATO EXTRACTO BANCOLOMBIA': {
+                'bg': '#fff9c4', 'fg': '#f57f17', 'icono': '💰'  # Amarillo (XLS Bancol)
+            },
+        }
+
+        # Obtenemos la configuración o un estilo gris por defecto
+        config = colores.get(obj.formato, {
+            'bg': '#f5f5f5', 'fg': '#616161', 'icono': '📁'
+        })
+
+        # Retornamos el HTML con el estilo aplicado
+        return format_html(
+            '<span style="background-color: {}; color: {}; '
+            'padding: 5px 10px; border-radius: 6px; '
+            'font-weight: bold; font-size: 11px; display: inline-block; border: 1px solid rgba(0,0,0,0.05);">'
+            '<span style="margin-right: 5px;">{}</span> {}</span>',
+            config['bg'],
+            config['fg'],
+            config['icono'],
+            obj.nombre_archivo_id  # Aquí mostramos el nombre real del archivo
+        )
+
+    # Configuración de la columna en el listado
+    col_nombre_archivo.short_description = "Archivo / Formato"
+    col_nombre_archivo.admin_order_field = "nombre_archivo_id"
+
+    # ----------------------fin colores------------------------
+
     def col_fecha(self, obj):
         if obj.fecha_carga_archivo:
             return obj.fecha_carga_archivo.strftime('%Y-%m-%d %H:%M:%S')
-        return "N/A" # Manejar el caso donde la fecha es nula
-        
+        return "N/A"  # Manejar el caso donde la fecha es nula
+
     def col_cargados(self, obj):
         return obj.registros_cargados
+
     col_cargados.short_description = "Cargados"
-    
+
     def col_rechazados(self, obj):
         return obj.registros_rechazados
+
     col_rechazados.short_description = "Rechazados"
-    
+
     def col_estado_archivo(self, obj):
         return obj.estado_proceso_archivo
+
     col_estado_archivo.short_description = "Estado"
-    
-    #-----------------------------------------------------
+
+    # -----------------------------------------------------
 
     def accion_procesar_archivo(self, request, queryset):
         procesados = 0
@@ -1602,233 +1528,17 @@ class InBox_PagosCabezalAdmin(admin.ModelAdmin):
                 "❌ Error: el nombre del archivo ya existe.",
                 level=messages.ERROR
             )
-
-
-
-# ================================================================
-# ADMIN PARA DETALLE
-# ================================================================
-
-from django.urls import reverse
-from django.utils.html import format_html
-
-# admin.py (fragmento a pegar en la clase InBox_PagosDetalleAdmin)
-from django.contrib import admin, messages
-from django.utils.translation import gettext_lazy as _
-from .services.conciliacion import conciliacion_por_movimiento
-
-@admin.register(InBox_PagosDetalle)
-class InBox_PagosDetalleAdmin(admin.ModelAdmin):
-    list_display = (
-        'col_pago_id',
-        'lote_pse',
-        'col_fragmento',
-        'col_clase_movimiento',
-        'col_estado_pago',
-        'col_conciliacion',
-        'col_cliente',
-        'col_prestamo',
-        'valor_pago',
-        'col_fecha_pago',
-        'regularizar_pago_action',   # ← NUEVO
-        'fragmentar_pago_action',
-    )
-    list_filter = ('estado_pago','estado_conciliacion','estado_fragmentacion','clase_movimiento','cliente_id_real')
-    search_fields = ('=cliente_id_real', '=pago_id', 'lote_pse')
-    ordering = ('-pago_id',)
-    
-    readonly_fields = (
-        "pago_id",
-        "fecha_carga_archivo",
-        "creado_por",
-    )
-    #list_per_page = 14 
-
-    fieldsets = (
-        ("ARCHIVO DE ORIGEN", {
-            "fields": ("nombre_archivo_id", "fecha_carga_archivo"),
-        }),
-
-        ("IDENTIFICADORES Y GRUPOS", {
-            "fields": ("lote_pse", "fragmento_de"),
-        }),
-
-        ("DATOS BANCARIOS", {
-            "fields": (
-                "banco_origen",
-                "cuenta_bancaria",
-                "tipo_cuenta_bancaria",
-                "canal_red_pago",
-                "ref_bancaria",
-                "ref_red",
-                "ref_cliente_1",
-                "ref_cliente_2",
-                "ref_cliente_3",
-            ),
-        }),
-
-        ("INFORMACIÓN REPORTADA POR EL BANCO", {
-            "fields": (
-                "estado_transaccion_reportado",
-                "clase_movimiento",
-                "estado_fragmentacion",
-                "cliente_id_reportado",
-                "prestamo_id_reportado",
-                "poliza_id_reportado",
-            ),
-        }),
-
-        ("DATOS DE CONCILIACIÓN", {
-            "fields": (
-                "cliente_id_real",
-                "prestamo_id_real",
-                "poliza_id_real",
-                "fecha_conciliacion",
-                "estado_conciliacion",
-            ),
-        }),
-
-        ("PAGO Y ESTADO", {
-            "fields": ("fecha_pago", "valor_pago", "estado_pago"),
-        }),
-
-        ("AUDITORÍA", {
-            "fields": ("creado_por", "observaciones"),
-        }),
-    )
-    
-    actions = ["action_conciliar_movimientos_seleccionados"]
-    
-    def col_estado_pago(self, obj):
-        return obj.estado_pago
-    col_estado_pago.short_description = "Estado"
-    
-    def col_clase_movimiento(self, obj):
-        return obj.clase_movimiento
-    col_clase_movimiento.short_description = "Clase Pago"
-    
-    def col_fecha_pago(self, obj):
-        if obj.fecha_pago:
-            return obj.fecha_pago.strftime('%Y-%b-%d')
-        return "N/A"
-    col_fecha_pago.short_description = "Fecha Pago"    
-    
-    def col_pago_id(self, obj):
-        return obj.pago_id
-    col_pago_id.short_description = "PagoId"
-    
-    def col_fragmento(self, obj):
-        return obj.fragmento_de
-    col_fragmento.short_description = "Frag"
-    
-    def col_fragmentacion(self, obj):
-        return obj.estado_fragmentacion
-    col_fragmentacion.short_description = "Fragmentacion"
-
-    def col_cliente(self, obj):
-        return obj.cliente_id_real
-    col_cliente.short_description = "Cliente"
-
-    def col_prestamo(self, obj):
-        return obj.prestamo_id_real
-    col_prestamo.short_description = "Prestamo"
-    
-    def col_conciliacion(self, obj):
-        return obj.estado_conciliacion
-    col_conciliacion.short_description = "Conci"
-    
-    #boton de fragmentación---------------------------------------------------
-    def fragmentar_pago_action(self, obj):
-        url = reverse("appfinancia:fragmentar_pago", args=[obj.pago_id])
-        return format_html('<a class="button" href="{}">Frag</a>', url)
-    fragmentar_pago_action.short_description = "Frag"
-    #-------------------------------------------------------------------------
-
-    def regularizar_pago_action(self, obj):
-        url = reverse("appfinancia:regularizar_pago", args=[obj.pago_id])
-        return format_html('<a class="button" href="{}">Regu</a>', url)
-    regularizar_pago_action.short_description = "Regu"
-
-    #-------------------------------------------------------------------------
-
-    def save_model(self, request, obj, form, change):
-        if not obj.pk:
-            obj.creado_por = request.user
-        super().save_model(request, obj, form, change)
-        
-   #Acción conciliación-------------------------------------------------------------------     
-    def action_conciliar_movimientos_seleccionados(self, request, queryset):
-        """
-        Action para conciliar los movimientos seleccionados (que deben ser ABONO_PSE).
-        """
-        movimientos = queryset.filter(clase_movimiento="ABONO_PSE", estado_pago="A_PROCESAR")
-        total_mov = movimientos.count()
-        conciliados = 0
-        asignados_total = 0
-        no_conciliar = []
-
-        for mov in movimientos:
-            # candidatos: pagos directos PSE sin grupo asignado y A_PROCESAR
-            candidatos_qs = InBox_PagosDetalle.objects.filter(
-                #clase_movimiento="PAGO_PSE_PSE",
-                clase_movimiento="PAGO_PSE",
-                estado_pago="A_PROCESAR",
-                estado_conciliacion="NO",                
-                lote_pse__isnull=True,  # no asignados aún
-            )
-            ok, msg, detalles = conciliacion_por_movimiento(mov, candidatos_qs)
-            if ok:
-                conciliados += 1
-                asignados_total += detalles.get("hijos_creados", 0)
-            else:
-                no_conciliar.append((mov.pago_id, msg))
-
-        if conciliados:
-            self.message_user(
-                request,
-                _(f"{conciliados} de {total_mov} movimientos conciliados correctamente. Pagos asignados: {asignados_total}"),
-                level=messages.SUCCESS
-            )
-
-        if no_conciliar:
-            # mostrar algunos detalles
-            lines = "; ".join([f"{mid}: {msg}" for mid, msg in no_conciliar[:10]])
-            self.message_user(
-                request,
-                _(f"{len(no_conciliar)} movimientos no conciliados. Ejemplos: {lines}"),
-                level=messages.WARNING
-            )
-
-    action_conciliar_movimientos_seleccionados.short_description = "Conciliar movimientos seleccionados (PSE grupos)"
-
-
-
-#=========================================================================================        
-# === CONTROL DE ARCHIVOS DE PAGOS === 2025/11/24       
-#=========================================================================================
-# appfinancia/admin.py
-#from django.contrib import admin
-#from django.utils.html import format_html
-
-#=========================================================================================        
-# === DETALLE DE LOS PAGOS ===  2025/11/24           
-#=========================================================================================    
-        
-# appfinancia/admin.py
-#from django.contrib import admin
-from .models import Pagos
-
+            
+#-----------------------------------------------------------------------------------------
 @admin.register(Pagos)
 class PagosAdmin(admin.ModelAdmin):
     list_display = (
         'pago_id',
-        'prestamo_id_real',
-        'cliente_id_real',
+        'col_prestamo_id_real',
+        'col_cliente_id_real',
         'valor_pago_formatted',
-        'estado_pago_colored',
-        'fecha_pago',
-        'nombre_archivo_id',
-        'creado_por',
+        'estado_pago',
+        'col_fecha_pago',
     )
     list_filter = (
         'estado_pago',
@@ -1838,10 +1548,11 @@ class PagosAdmin(admin.ModelAdmin):
         'banco_origen',
     )
     search_fields = (
-        'pago_id',
-        'nombre_archivo_id__nombre_archivo_id',
-        'prestamo_id_reportado',
-        'cliente_id_reportado',
+        '=pago_id',
+        '=prestamo_id_real',
+        # 'nombre_archivo_id__nombre_archivo_id',
+        # 'prestamo_id_reportado',
+        # 'cliente_id_reportado',
         'ref_bancaria',
         'ref_red',
     )
@@ -1893,13 +1604,33 @@ class PagosAdmin(admin.ModelAdmin):
         }),
     )
 
-        
     actions = ['aplicar_pagos_conciliados']
-    
 
     # Métodos personalizados
+    def col_prestamo_id_real(self, obj):
+        if obj.prestamo_id_real:
+            return obj.prestamo_id_real
+        return "N/A"  # Manejar el caso donde la fecha es nula
+
+    col_prestamo_id_real.short_description = "Prestamo id"
+
+    def col_cliente_id_real(self, obj):
+        if obj.cliente_id_real:
+            return obj.cliente_id_real
+        return "N/A"  # Manejar el caso donde la fecha es nula
+
+    col_cliente_id_real.short_description = "Cliente id"
+
+    def col_fecha_pago(self, obj):
+        if obj.fecha_pago:
+            return obj.fecha_pago.strftime('%Y-%m-%d')
+        return "N/A"  # Manejar el caso donde la fecha es nula
+
+    col_fecha_pago.short_description = "Fecha Pago"
+
     def valor_pago_formatted(self, obj):
         return f"${obj.valor_pago:,.2f}"
+
     valor_pago_formatted.short_description = "Valor Pago"
 
     def estado_pago_colored(self, obj):
@@ -1907,7 +1638,7 @@ class PagosAdmin(admin.ModelAdmin):
         colores = {
             'Recibido': '#1f77b4',
             'pendiente': '#ff7f0e',
-            'rechazado': '#d62728', 
+            'rechazado': '#d62728',
             'conciliado': '#2ca02c',
             'aplicado': '#9467bd',
             'reversado': '#8c564b',
@@ -1915,6 +1646,7 @@ class PagosAdmin(admin.ModelAdmin):
         }
         color = colores.get(obj.estado_pago, '#7f7f7f')
         return f'<span style="color:{color}; font-weight:bold;">{obj.get_estado_pago_display()}</span>'
+
     estado_pago_colored.short_description = "Estado"
     estado_pago_colored.allow_tags = True
     estado_pago_colored.admin_order_field = 'estado_pago'
@@ -1923,16 +1655,9 @@ class PagosAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         if not change:
             obj.creado_por = request.user
-        super().save_model(request, obj, form, change)        
+        super().save_model(request, obj, form, change)
 
-      # ← ¡Importante!
-    # appfinancia/admin.py
-
-    from django.db import transaction
-    from django.contrib import admin, messages
-    from django.utils import timezone
-    from .models import Pagos, Bitacora
-
+        # ← ¡Importante!
 
     @admin.action(description="✅ Aplicar pagos conciliados")
     def aplicar_pagos_conciliados(modeladmin, request, queryset):
@@ -2012,22 +1737,19 @@ class PagosAdmin(admin.ModelAdmin):
                 proceso='ERROR',
                 resultado=error_msg[:500]  # Evitar truncamiento en DB
             )
-#--------------------------------------------------------------------------------------------------------------------
-# 
-from django.contrib import admin
-from django.shortcuts import render, redirect
-from django.urls import path, reverse
-from .models import ConsultasReportesProxy
-from .views import consulta_causacion_view, balance_operaciones_view, prestamos_vencidos_view
 
+#-----------------------------------------------------------------------------------------
 @admin.register(ConsultasReportesProxy)
 class ConsultasReportesAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
-            path('causacion/', self.admin_site.admin_view(consulta_causacion_view), name='appfinancia_consultasreportes_causacion'),
-            path('balance-operaciones/', self.admin_site.admin_view(balance_operaciones_view), name='appfinancia_consultasreportes_balance'), 
-            path('prestamos-vencidos/', self.admin_site.admin_view(prestamos_vencidos_view), name='appfinancia_consultasreportes_vencidos')
+            path('causacion/', self.admin_site.admin_view(consulta_causacion_view),
+                 name='appfinancia_consultasreportes_causacion'),
+            path('balance-operaciones/', self.admin_site.admin_view(balance_operaciones_view),
+                 name='appfinancia_consultasreportes_balance'),
+            path('prestamos-vencidos/', self.admin_site.admin_view(prestamos_vencidos_view),
+                 name='appfinancia_consultasreportes_vencidos')
         ]
         return custom_urls + urls
 
@@ -2059,5 +1781,1099 @@ class ConsultasReportesAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
-#------------------------------------------------------------------------------------------
-      
+
+#-----------------------------------------------------------------------------------------
+@admin.register(InBox_PagosDetalle)
+class InBox_PagosDetalleAdmin(admin.ModelAdmin):
+
+    # ==================================================
+    # CONFIGURACIÓN GENERAL
+    # ==================================================
+    raw_id_fields = ("cliente_id_real", "prestamo_id_real")
+
+    class Media:
+        js = ("admin/js/jquery.init.js", "admin/js/collapse.js")
+
+    list_display = (
+        'col_pago_id',
+        'lote_pse',
+        'col_fragmento',
+        'col_clase_movimiento',
+        'col_estado_pago',
+        'col_conciliacion',
+        'col_cliente',
+        'col_prestamo',
+        'valor_pago',
+        'col_fecha_pago',
+    )
+    '''
+    list_filter = (
+        'estado_pago',
+        'estado_conciliacion',
+        'estado_fragmentacion',
+        'clase_movimiento',
+        'fecha_pago',
+    )
+    '''
+    
+    list_filter = (
+        'nombre_archivo_id',
+        ('fecha_carga_archivo', DateFieldListFilter),
+        'lote_pse',
+        'pago_id',
+    
+        # filtros que ya tenías
+        'estado_pago',
+        'estado_conciliacion',
+        'estado_fragmentacion',
+        'clase_movimiento',
+    )
+
+    search_fields = (
+        'pago_id__exact',
+        'lote_pse__exact',
+        #'cliente_id_real__numero_documento__exact',
+    )
+
+    ordering = ('-pago_id',)
+    list_per_page = 20
+
+    # ==================================================
+    # 🔒 BLOQUEO TOTAL DE EDICIÓN
+    # ==================================================
+    def has_add_permission(self, request):
+        return False
+     
+    def has_change_permission(self, request, obj=None):
+        return False
+     
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    # ==================================================
+    # FIELDSETS (SOLO VISUAL)
+    # ==================================================
+    fieldsets = (
+        ("📂 ARCHIVO DE ORIGEN", {
+            "fields": ("nombre_archivo_id", "fecha_carga_archivo"),
+        }),
+        ("🔗 IDENTIFICADORES", {
+            "fields": ("pago_id", "lote_pse", "fragmento_de"),
+        }),
+        ("🏦 DATOS BANCARIOS", {
+            "fields": (
+                "banco_origen",
+                "cuenta_bancaria",
+                "tipo_cuenta_bancaria",
+                "canal_red_pago",
+                "ref_bancaria",
+                "ref_red",
+                "ref_cliente_1",
+                "ref_cliente_2",
+                "ref_cliente_3",
+            ),
+        }),
+        ("📑 INFORMACIÓN REPORTADA", {
+            "fields": (
+                "clase_movimiento",
+                "estado_fragmentacion",
+                "cliente_id_reportado",
+                "prestamo_id_reportado",
+                "poliza_id_reportado",
+            ),
+        }),
+        ("🔍 CONCILIACIÓN", {
+            "fields": (
+                "cliente_id_real",
+                "prestamo_id_real",
+                "poliza_id_real",
+                "fecha_conciliacion",
+                "estado_conciliacion",
+            ),
+        }),
+        ("💰 PAGO", {
+            "fields": ("fecha_pago", "valor_pago", "estado_pago"),
+        }),
+        ("🕒 AUDITORÍA", {
+            "fields": ("creado_por", "observaciones"),
+        }),
+    )
+
+    # ==================================================
+    # 📊 ACCIONES DE REPORTES
+    # ==================================================
+    actions = (
+        "action_reporte_pagos_pdf",
+        "action_reporte_pagos_excel",
+    )
+
+    @admin.action(description="📄 Exportar pagos a PDF")
+    def action_reporte_pagos_pdf(self, request, queryset):
+        if not queryset.exists():
+            self.message_user(
+                request,
+                "No hay pagos para exportar.",
+                level=messages.WARNING
+            )
+            return
+
+        generar_reporte_pagos_pdf(
+            queryset=queryset,
+            usuario=request.user
+        )
+
+        self.message_user(
+            request,
+            "✔ Reporte PDF generado correctamente.",
+            level=messages.SUCCESS
+        )
+
+    @admin.action(description="📊 Exportar pagos a Excel")
+    def action_reporte_pagos_excel(self, request, queryset):
+        if not queryset.exists():
+            self.message_user(
+                request,
+                "No hay pagos para exportar.",
+                level=messages.WARNING
+            )
+            return
+
+        return generar_reporte_pagos_excel(queryset)
+
+    # ==================================================
+    # 🔵 FUNCIONES DE COLUMNA (NO SE TOCAN)
+    # ==================================================
+    def col_pago_id(self, obj):
+        return obj.pago_id
+    col_pago_id.short_description = "ID"
+
+    def col_fragmento(self, obj):
+        return obj.fragmento_de
+    col_fragmento.short_description = "Frag"
+
+    def col_cliente(self, obj):
+        return obj.cliente_id_real
+    col_cliente.short_description = "Cliente"
+
+    def col_prestamo(self, obj):
+        return obj.prestamo_id_real
+    col_prestamo.short_description = "Préstamo"
+
+    def col_estado_pago(self, obj):
+        return obj.estado_pago
+    col_estado_pago.short_description = "Estado"
+
+    def col_conciliacion(self, obj):
+        return obj.estado_conciliacion
+    col_conciliacion.short_description = "Conci"
+
+    def col_fecha_pago(self, obj):
+        return obj.fecha_pago.strftime('%Y-%b-%d') if obj.fecha_pago else "N/A"
+    col_fecha_pago.short_description = "Fecha Pago"
+
+    # ==================================================
+    # 🎨 CLASE DE MOVIMIENTO CON COLORES
+    # ==================================================
+    def col_clase_movimiento(self, obj):
+        colores = {
+            'PAGO_PSE': {'bg': '#e3f2fd', 'fg': '#1565c0', 'label': 'PAGO PSE'},
+            'PAGO_BANCOL': {'bg': '#fff9c4', 'fg': '#f57f17', 'label': 'BANCOLOMBIA'},
+            'LOTE_PSE': {'bg': '#e8f5e9', 'fg': '#2e7d32', 'label': 'LOTE PSE'},
+            'EXCLUIDO': {'bg': '#f5f5f5', 'fg': '#616161', 'label': 'EXCLUIDO'},
+        }
+
+        config = colores.get(
+            obj.clase_movimiento,
+            {'bg': '#eeeeee', 'fg': '#424242', 'label': obj.clase_movimiento}
+        )
+
+        return format_html(
+            '<span style="background-color:{}; color:{}; '
+            'padding:4px 10px; border-radius:12px; '
+            'font-size:10px; font-weight:bold;">{}</span>',
+            config['bg'], config['fg'], config['label']
+        )
+
+    col_clase_movimiento.short_description = "Clase"
+    col_clase_movimiento.admin_order_field = "clase_movimiento"
+
+    # Generar reporte de conciliación:
+    # ==================================================
+    # URL PERSONALIZADA DEL ADMIN
+    # ==================================================
+    '''
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "reporte-conciliacion/",
+                self.admin_site.admin_view(self.reporte_conciliacion_view),
+                name="reporte_conciliacion_excel",
+            ),
+        ]
+        return custom_urls + urls
+    
+    # ==================================================
+    # VISTA DEL REPORTE (ADMIN)
+    # ==================================================
+    def reporte_conciliacion_view(self, request):
+        return generar_reporte_conciliacion_excel(request)
+    '''
+    def get_urls(self):
+	    urls = super().get_urls()
+	    custom_urls = [
+	        path(
+	            "reporte-conciliacion/",
+	            self.admin_site.admin_view(self.reporte_conciliacion_view),
+	            name="reporte_conciliacion",
+	        ),
+	    ]
+	    return custom_urls + urls
+	
+	
+    def reporte_conciliacion_view(self, request):
+	    return generar_reporte_conciliacion_excel(request)
+    
+    # filtros
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context["reporte_conciliacion_url"] = "reporte-conciliacion/"
+        return super().changelist_view(request, extra_context)
+
+#-----------------------------------------------------------------------------------------
+class ClaseMovimientoSinExcluidosFilter(admin.SimpleListFilter):
+    title = 'Clase Movimiento' # Título que aparecerá en el admin
+    parameter_name = 'clase_movimiento'
+
+    def lookups(self, request, model_admin):
+        # Aquí definimos solo las opciones que queremos MOSTRAR
+        return (
+            ('PAGO_PSE', 'PAGO PSE'),
+            ('PAGO_BANCOL', 'BANCOLOMBIA'),
+            ('LOTE_PSE', 'LOTE PSE'),
+        )
+
+    def queryset(self, request, queryset):
+        # Aquí aplicamos la lógica de filtrado según la opción elegida
+        if self.value():
+            return queryset.filter(clase_movimiento=self.value())
+        return queryset
+        
+#-----------------------------------------------------------------------------------------        
+@admin.register(PagosParaRegularizar)
+class PagosParaRegularizarAdmin(admin.ModelAdmin): # Cambiar a InBox_PagosDetalleAdmin si es necesario
+
+    change_list_template = "admin/appfinancia/pagospararegularizar/change_list.html"
+    raw_id_fields = ("cliente_id_real", "prestamo_id_real")
+
+    # =====================================================
+    # QUERYSET
+    # =====================================================
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(estado_pago="A_PROCESAR")
+
+    # =====================================================
+    # LISTADO
+    # =====================================================
+    list_display = (
+        "col_pago_id", "col_lote_pse", "col_fragmento", 
+        "col_clase_movimiento", "col_conciliacion", "col_cliente", 
+        "col_prestamo", "valor_pago", "col_fecha_pago", "col_fragmentacion",
+    )
+            
+    list_filter = (
+        ClaseMovimientoSinExcluidosFilter, # Usamos el filtro personalizado aquí
+        "estado_conciliacion",
+        "estado_fragmentacion",
+    )
+
+    search_fields = (
+        "cliente_id_real__exact",
+        "pago_id__exact",
+        "lote_pse__exact",
+    )
+
+    ordering = ("-pago_id",)
+
+    # =====================================================
+    # PERMISOS
+    # =====================================================
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return True    
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    # =====================================================
+    # SOLO LECTURA
+    # =====================================================
+    readonly_fields = (
+        "pago_id", "nombre_archivo_id", "fecha_carga_archivo", "creado_por",
+        "clase_movimiento", "lote_pse", "fecha_pago", "valor_pago", "estado_pago", 
+        "fecha_conciliacion", "estado_conciliacion", "fragmento_de", "canal_red_pago", 
+        "ref_bancaria", "ref_red", "ref_cliente_1", "ref_cliente_2", "ref_cliente_3",
+        "prestamo_id_reportado", "cliente_id_reportado",
+    )
+
+    # =====================================================
+    # FIELDSETS
+    # =====================================================
+    fieldsets = (
+        ("INFORMACIÓN DEL PAGO", {
+            "classes": ("collapse",),
+            "fields": (
+                ("nombre_archivo_id", "fecha_carga_archivo"),
+                ("fecha_pago", "valor_pago", "estado_pago"),
+                ("clase_movimiento", "pago_id", "lote_pse", "fragmento_de"),
+                ("fecha_conciliacion", "estado_conciliacion"),
+            ),
+        }),
+        ("ASIGNACIÓN Y REFERENCIAS", {
+            "fields": (
+                ("canal_red_pago", "ref_bancaria", "ref_red"),
+                ("ref_cliente_1", "ref_cliente_2", "ref_cliente_3"),
+                ("cliente_id_reportado", "prestamo_id_reportado"),
+                ("prestamo_id_real",),
+                ("estado_fragmentacion",),
+            ),
+        }),
+    )
+
+    list_per_page = 12
+    
+    # =====================================================
+    # ACCIONES
+    # =====================================================
+    actions = ("action_confirmar_pagos",)
+
+    # =====================================================
+    # CONFIGURACIÓN DE URLS (ÚNICO MÉTODO)
+    # =====================================================
+    def get_urls(self):
+        urls = super().get_urls()
+        info = self.model._meta.app_label, self.model._meta.model_name
+        
+        custom_urls = [
+            path(
+                "descargar-resumen-conciliacion/",
+                self.admin_site.admin_view(self.descargar_resumen_conciliacion_view),
+                name="%s_%s_descargar_resumen" % info,
+            ),
+            path(
+                "conciliacion/",
+                self.admin_site.admin_view(self.conciliacion_view),
+                name="%s_%s_conciliacion" % info,
+            ),
+        ]
+        return custom_urls + urls
+
+    # =====================================================
+    # VISTAS PERSONALIZADAS
+    # =====================================================
+    def descargar_resumen_conciliacion_view(self, request):
+        conciliacion_id = request.GET.get("conciliacion_id")
+    
+        if not conciliacion_id or conciliacion_id == "None":
+            conciliacion_id = (
+                InBox_PagosDetalle.objects
+                .exclude(conciliacion_id__isnull=True)
+                .order_by("-conciliacion_id")
+                .values_list("conciliacion_id", flat=True)
+                .first()
+            )
+    
+        if not conciliacion_id:
+            raise Http404("No existe ninguna conciliación generada aún")
+    
+        ruta = reporte_resumen_conciliacion(conciliacion_id)
+    
+        return FileResponse(
+            open(ruta, "rb"),
+            as_attachment=True,
+            filename=os.path.basename(ruta),
+        )
+
+    def conciliacion_view(self, request):
+        if request.method != "POST":
+            self.message_user(request, "Método no permitido.", level=messages.ERROR)
+            return redirect("..")
+    
+        movimientos = InBox_PagosDetalle.objects.filter(
+            clase_movimiento="LOTE_PSE",
+            estado_pago="A_PROCESAR",
+            estado_conciliacion="NO",
+        )
+    
+        if not movimientos.exists():
+            self.message_user(request, "No hay movimientos pendientes.", level=messages.WARNING)
+            return redirect("..")
+    
+        self._conciliar_movimientos(request, movimientos)
+        return redirect("..")
+
+    def _conciliar_movimientos(self, request, movimientos):
+        num_conciliacion = get_next_conciliacion_id()
+    
+        candidatos = InBox_PagosDetalle.objects.filter(
+            clase_movimiento="PAGO_PSE",
+            estado_pago="A_PROCESAR",
+            estado_conciliacion="NO",
+        )
+    
+        conciliados = 0
+        asignados = 0
+    
+        for mov in movimientos:
+            ok, _, detalles = conciliacion_por_movimiento(
+                mov, candidatos, num_conciliacion
+            )
+            if ok:
+                conciliados += 1
+                asignados += detalles.get("hijos_creados", 0)
+    
+        self.message_user(
+            request,
+            f"✔ Conciliación {num_conciliacion} ejecutada. Movimientos: {conciliados}, Asignados: {asignados}",
+            level=messages.SUCCESS
+        )
+
+    # =====================================================
+    # COLUMNAS Y FORMATO (LISTADO)
+    # =====================================================
+    def col_clase_movimiento(self, obj):
+        colores = {
+            "PAGO_PSE": ("#e3f2fd", "#1565c0", "PAGO PSE"),
+            "PAGO_BANCOL": ("#fff9c4", "#f57f17", "BANCOLOMBIA"),
+            "LOTE_PSE": ("#e8f5e9", "#2e7d32", "LOTE PSE"),
+            "EXCLUIDO": ("#f5f5f5", "#616161", "EXCLUIDO"),
+        }
+        bg, fg, label = colores.get(obj.clase_movimiento, ("#ffffff", "#000000", obj.clase_movimiento))
+        return format_html(
+            '<span style="background:{};color:{};padding:4px 12px;border-radius:12px;font-size:10px;font-weight:bold;">{}</span>',
+            bg, fg, label
+        )
+    col_clase_movimiento.short_description = "Clase"
+    col_clase_movimiento.admin_order_field = "clase_movimiento" # <-- ACTIVA ORDEN
+
+    def col_fragmentacion(self, obj):
+        if obj.clase_movimiento == "LOTE_PSE": return "-"
+        estado = (obj.estado_fragmentacion or "").strip()
+        if estado == "FRAGMENTADO":
+            return format_html('<span style="color:#9e9e9e;">FRAGMENTADO</span>')
+        if not obj.cliente_id_real or not obj.prestamo_id_real:
+            return format_html('<span style="color:#bcbcbc; font-style: italic;">Sin asignar</span>')
+        if estado == "A_FRAGMENTAR":
+            url = reverse("appfinancia:fragmentar_pago", args=[obj.pago_id])
+            return format_html(
+                '<a href="{}" style="background:#f44336;color:white;padding:5px 10px;border-radius:6px;font-size:10px;font-weight:bold;">⚡ A_FRAGMENTAR</a>',
+                url
+            )
+        return estado or "-"
+    col_fragmentacion.short_description = "Fragmentación"
+
+    def col_fecha_pago(self, obj):
+        return obj.fecha_pago.strftime("%Y-%b-%d") if obj.fecha_pago else "N/A"
+    col_fecha_pago.short_description = "Fecha Pago"
+    col_fecha_pago.admin_order_field = "fecha_pago" # <-- ACTIVA ORDEN
+
+    def col_pago_id(self, obj): return obj.pago_id
+    col_pago_id.short_description = "ID"
+    col_pago_id.admin_order_field = "pago_id" # <-- ACTIVA ORDEN
+
+    def col_lote_pse(self, obj): return obj.lote_pse
+    col_lote_pse.short_description = "Lote"
+    col_lote_pse.admin_order_field = "lote_pse" # <-- ACTIVA ORDEN
+
+    def col_fragmento(self, obj): return obj.fragmento_de
+    col_fragmento.short_description = "Frag"
+    col_fragmento.admin_order_field = "fragmento_de" # <-- ACTIVA ORDEN
+
+    def col_cliente(self, obj): return obj.cliente_id_real
+    col_cliente.short_description = "Cliente"
+    col_cliente.admin_order_field = "cliente_id_real" # <-- ACTIVA ORDEN
+    
+
+    def col_prestamo(self, obj): return obj.prestamo_id_real
+    col_prestamo.short_description = "Préstamo"
+    col_prestamo.admin_order_field = "prestamo_id_real" # <-- ACTIVA ORDEN
+
+    def col_conciliacion(self, obj): return obj.estado_conciliacion
+    col_conciliacion.short_description = "Conci"
+    col_conciliacion.admin_order_field = "estado_conciliacion" # <-- ACTIVA ORDEN
+
+    # =====================================================
+    # COMPORTAMIENTO FORMULARIO
+    # =====================================================
+    def get_readonly_fields(self, request, obj=None):
+        if obj and obj.clase_movimiento == "LOTE_PSE":
+            return [f.name for f in self.model._meta.fields]
+        return self.readonly_fields
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        obj = self.get_object(request, object_id)
+        if obj and obj.clase_movimiento == "LOTE_PSE":
+            self.message_user(request, "Los LOTE_PSE no permiten asignación manual.", level=messages.WARNING)
+        return super().change_view(request, object_id, form_url, extra_context=extra_context)
+
+    def save_model(self, request, obj, form, change):
+        if obj.prestamo_id_real:
+            obj.cliente_id_real = obj.prestamo_id_real.cliente_id
+        if not obj.pk:
+            obj.creado_por = request.user
+        super().save_model(request, obj, form, change)
+
+    def action_confirmar_pagos(self, request, queryset):
+        ok, msg = confirmar_pagos(queryset, request.user)
+        self.message_user(request, msg, level=messages.SUCCESS if ok else messages.ERROR)
+    action_confirmar_pagos.short_description = "Confirmar pagos seleccionados"
+
+#-----------------------------------------------------------------------------------------
+#from django import forms
+#from .financiacion_validaciones import f_validar_financiacion_form
+#from appfinancia.financiacion_validaciones import f_validar_financiacion_form
+#from appfinancia.services.financiacion_validaciones import f_validar_financiacion_form
+
+class FinanciacionForm(forms.ModelForm):
+    class Meta:
+        model = Financiacion
+        fields = "__all__"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        # Creamos un objeto temporal con los datos del formulario para validar
+        instance = self.instance
+        for field, value in cleaned_data.items():
+            setattr(instance, field, value)
+        
+        # Llamamos a tu lógica de validación
+        errores = f_validar_financiacion_form(instance)
+        
+        if errores:
+            # Esto asigna cada error a su campo correspondiente en la pantalla
+            for campo, mensaje in errores.items():
+                self.add_error(campo, mensaje)
+            
+            raise forms.ValidationError("Por favor corrija los errores marcados abajo.")
+        
+        return cleaned_data
+
+#----------------------------
+@admin.register(Financiacion)
+class FinanciacionAdmin(AdminBaseMoneda):
+    form = FinanciacionForm  # <--- Vinculamos el formulario validado
+    # change_form_template = "admin/appfinancia/financiacion/change_form.html"
+    
+    class Media:
+        js = (
+            "admin/js/jquery.init.js", 
+            "admin/js/collapse.js",
+            "appfinancia/js/financiacion_amortizacion_frances.js", # <--- Ruta corregida
+        )
+
+    list_display = (
+        "col_solicitud_id",
+        "col_financiacion_id",
+        "col_nombre_completo",
+        "telefono",
+        #"col_numero_documento",
+        #"email_origen",
+        "col_fecha_solicitud",
+        # "estado_solicitud",
+        "col_cliente",
+        "col_desembolso",
+        #"crear_cliente",
+        "acciones_estado",
+    )
+
+    list_filter = (
+        "estado_solicitud",
+        "cliente_nuevo",
+        "cliente_vetado",
+        "seguro_vida",
+        "fecha_creacion",
+    )
+
+    search_fields = (
+        "solicitud_id",
+        "financiacion_id",
+        "nombre_completo",
+        "numero_documento",
+        "correo_electronico",
+        "email_origen",
+        "asesor",
+        "agencia",
+    )
+
+    ordering = ("-fecha_creacion",)
+    list_per_page = 25
+
+    # ==========================
+    # SOLO LECTURA
+    # ==========================
+    readonly_fields = (
+        "solicitud_id",
+        "fecha_solicitud",
+        "message_id",
+        "fecha_creacion",
+        "email_origen",
+        "asunto",
+        "cliente_nuevo",
+        "cliente_vetado",
+        "nombre_completo",
+        "tipo_documento",
+        "numero_documento",
+        "telefono",
+        "correo_electronico",
+        "asesor",
+        "agencia",
+        'cuota_base_francesa',
+        
+    )
+
+    # ==========================
+    # FIELDSETS
+    # ==========================
+    fieldsets = (
+        ("📨 DATOS DEL CORREO", {
+            "fields": (
+                "message_id",
+                "email_origen",
+                "asunto",
+                "fecha_solicitud",
+            ),
+            'classes': ('collapse',)
+        }),
+        ("👤 DATOS DEL CLIENTE", {
+            "fields": (
+                "nombre_completo",
+                "tipo_documento",
+                "numero_documento",
+                "telefono",
+                "correo_electronico",
+            ),
+            'classes': ('collapse',)
+        }),
+        ("🏢 DATOS COMERCIALES", {
+            "fields": (
+                "asesor",
+                "agencia",
+            ),
+            'classes': ('collapse',)
+        }),
+        ("💰 VALORES", {
+            "fields": (
+                "valor_prestamo",
+                "valor_cuota_inicial",
+                "valor_seguro_vida",
+                "tasa",
+                "numero_cuotas",
+                #"cuota_base_francesa",
+            )
+        }),
+        ("📄 PÓLIZA", {
+            "fields": (
+                "placas",
+                "numero_poliza",
+                "seguro_vida",
+            ),
+            'classes': ('collapse',)
+        }),
+        ("📎 ADJUNTOS", {
+            "fields": (
+                "adjunta_cedula",
+                "adjunta_poliza",
+                "adjunta_segurovida",
+                "adjunta_archivo_a",
+                "adjunta_archivo_b",
+                "adjunta_archivo_c",
+                
+            ),
+            'classes': ('collapse',)
+        }),
+        ("⚙️ VALIDACIONES Y CHECK LIST PARA LA APROBACION", {
+            "fields": (
+                "cliente_nuevo",
+                "cliente_vetado",
+                "info_cliente_valida",
+                "adjunta_documento_identificacion",
+                "adjunta_poliza_seguro",
+                "adjunta_autorizacion_datos",
+                "adjunta_seguro_vida",
+            ),
+            'classes': ('collapse',)
+        }),
+        ("📌 ESTADO DE LA SOLICITUD", {
+            "fields": (
+                "estado_solicitud",
+            )
+        }),
+        ("🕒 AUDITORÍA", {
+            "fields": (
+                "fecha_creacion",
+            )
+        }),
+    )
+
+    # ==========================
+    # ACCIONES MASIVAS
+    # ==========================
+    actions = (
+        #"leer_correos_financiacion",
+        "aprobar_solicitudes",
+        "negar_solicitudes",
+        "reenvio_email_aprobacion"
+    )
+
+    '''
+    #lógica movida la botón leer correos de financiación.
+    @admin.action(description="📨 Leer correos de financiación (IMAP)")
+    def leer_correos_financiacion(self, request, queryset):
+        try:
+            procesar_emails()
+            self.message_user(
+                request,
+                "✔ Correos leídos correctamente.",
+                level=messages.SUCCESS
+            )
+        except Exception as e:
+            self.message_user(
+                request,
+                f"❌ Error leyendo correos: {e}",
+                level=messages.ERROR
+            )
+    ''''
+    
+
+    @admin.action(description="✅ Aprobar solicitudes seleccionadas")
+    #@admin.action(description="✔ Aprobar financiación")
+    def aprobar_solicitudes(modeladmin, request, queryset):
+    
+        if queryset.count() != 1:
+            messages.error(
+                request,
+                "Debe seleccionar UNA sola financiación para aprobar."
+            )
+            return
+    
+        financiacion = queryset.first()
+        
+        #f_plan_pagos_cuota_fija(106)
+         
+        #probar solo la impresión:
+        #f_plan_pagos_cuota_fija(102)
+        #f_generar_pdf_plan_pagos(102)
+        #f_correo_aprobacion(102)
+        #return
+        
+        try:
+            f_aprobar_financiacion(
+                solicitud_id=financiacion.solicitud_id,
+                usuario=request.user
+            )
+    
+            messages.success(
+                request,
+                "✅ Financiación aprobada correctamente."
+            )
+    
+        except Exception as e:
+            # 👇 NUNCA iterar errores
+            messages.error(
+                request,
+                f"❌ Error al aprobar la financiación: {str(e)}"
+            )
+    
+    
+    '''
+    def aprobar_solicitudes(self, request, queryset):   
+        pendientes = queryset.filter(estado_solicitud="RECIBIDO")
+        count = pendientes.update(estado_solicitud="APROBADO")
+
+        self.message_user(
+            request,
+            f"{count} solicitud(es) aprobadas." if count else
+            "No hay solicitudes en estado RECIBIDO.",
+            level=messages.SUCCESS if count else messages.WARNING
+        )
+        '''
+
+    @admin.action(description="❌ Negar solicitudes seleccionadas")
+    def negar_solicitudes(self, request, queryset):
+        pendientes = queryset.filter(estado_solicitud="RECIBIDO")
+        count = pendientes.update(estado_solicitud="NEGADO")
+
+        self.message_user(
+            request,
+            f"{count} solicitud(es) negadas." if count else
+            "No hay solicitudes en estado RECIBIDO.",
+            level=messages.SUCCESS if count else messages.WARNING
+        )
+
+
+    @admin.action(description="✅ Aprobar solicitudes seleccionadas")
+    #@admin.action(description="✔ Aprobar financiación")
+    def reenvio_email_aprobacion(modeladmin, request, queryset):
+    
+        if queryset.count() != 1:
+            messages.error(
+                request,
+                "Debe seleccionar UNA sola financiación para el reenvio correo aprobación."
+            )
+            return
+    
+        financiacion = queryset.first()
+        
+        
+        try:
+            f_reenvio_correo_financiacion(
+                solicitud_id=financiacion.solicitud_id,
+                usuario=request.user
+            )
+    
+            messages.success(
+                request,
+                "✅ Reenvio de correo de aprobación correctamente."
+            )
+    
+        except Exception as e:
+            # 👇 NUNCA iterar errores
+            messages.error(
+                request,
+                f"❌ Error al reenviar el correo de aprobación: {str(e)}"
+            )
+    
+
+    # ==========================
+    # ESTADO VISUAL
+    # ==========================
+    def acciones_estado(self, obj):
+        colores = {
+            "RECIBIDO": "orange",
+            "APROBADO": "green",
+            "NEGADO": "red",
+        }
+        iconos = {
+            "RECIBIDO": "⏳",
+            "APROBADO": "✔",
+            "NEGADO": "✖",
+        }
+        return format_html(
+            '<span style="color:{}; font-weight:bold;">{} {}</span>',
+            colores.get(obj.estado_solicitud, "gray"),
+            iconos.get(obj.estado_solicitud, ""),
+            obj.estado_solicitud,
+        )
+
+    acciones_estado.short_description = "Estado"
+
+    # ==========================
+    # COLUMNAS SIMPLES
+    # ==========================
+    def col_solicitud_id(self, obj): return obj.solicitud_id
+    col_solicitud_id.short_description = "ID"
+    col_solicitud_id.admin_order_field = "solicitud_id"
+    
+    def col_financiacion_id(self, obj): return obj.financiacion_id
+    col_financiacion_id.short_description = "FIN-ID"
+    col_financiacion_id.admin_order_field = "financiacion_id"
+
+    def col_nombre_completo(self, obj): return obj.nombre_completo
+    col_nombre_completo.short_description = "NOMBRE"
+    
+
+    def col_numero_documento(self, obj): return obj.numero_documento
+    col_numero_documento.short_description = "DOCUMENTO"
+    col_numero_documento.admin_order_field = "numero_documento"
+
+    def col_fecha_solicitud(self, obj): 
+        if obj.fecha_solicitud:
+            return obj.fecha_solicitud.strftime('%Y-%m-%d %H:%M:%S')
+        return "N/A"
+    col_fecha_solicitud.short_description = "FECHA SOLICITUD"
+    col_fecha_solicitud.admin_order_field = "fecha_solicitud"
+
+
+    # ==========================
+    # URL PERSONALIZADA DEL ADMIN
+    # ==========================
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "leer-correos/",
+                self.admin_site.admin_view(self.leer_correos_view),
+                name="appfinancia_financiacion_leer_correos",
+            ),
+        ]
+        return custom_urls + urls
+    
+    
+    # ========================    
+    # Inyectamos el archivo JS
+    # ========================
+    
+    @admin.display(description="Cuota Base (Francés)")
+    def cuota_base_francesa(self, obj):
+        import decimal
+        from django.utils.html import format_html
+        
+        try:
+            # 1. Validación de datos existentes
+            if not obj.valor_prestamo or not obj.tasa or not obj.numero_cuotas:
+                return "Faltan datos"
+
+            # 2. Conversión a Decimal
+            P = decimal.Decimal(str(obj.valor_prestamo))
+            i = decimal.Decimal(str(obj.tasa)) / decimal.Decimal("100")
+            
+            try:
+                n = int(float(str(obj.numero_cuotas).strip()))
+            except:
+                return "Plazo no es número"
+
+            if P <= 0 or i <= 0 or n <= 0:
+                return "Valores deben ser > 0"
+
+            # 3. Cálculo matemático
+            uno = decimal.Decimal("1")
+            denominador = uno - (uno + i) ** (-n)
+            
+            if denominador == 0: return "Error: Div 0"
+
+            cuota = (P * i) / denominador
+            # Redondeamos a cero decimales
+            cuota_final = cuota.quantize(uno, rounding=decimal.ROUND_HALF_UP)
+            
+            # 4. FORMATEO MANUAL (Para evitar el error 'f' de SafeString)
+            # Formateamos el número con comas de miles antes de pasarlo a format_html
+            cuota_formateada = f"{cuota_final:,.0f}".replace(",", ".") # Ejemplo para formato punto en miles
+            
+            return format_html(
+                '<b style="color: #264b5d; font-size: 1.2em;">${}</b>', 
+                cuota_formateada
+            )
+
+        except Exception as e:
+            return f"Error: {str(e)}"
+        
+    
+    # ==========================
+    # VISTA BOTÓN CHANGE_FORM
+    # ==========================
+    def leer_correos_view(self, request):
+        try:
+            procesar_emails()
+            self.message_user(
+                request,
+                "✔ Correos de financiación procesados correctamente.",
+                level=messages.SUCCESS,
+            )
+        except Exception as e:
+            self.message_user(
+                request,
+                f"❌ Error procesando correos: {e}",
+                level=messages.ERROR,
+            )
+        return redirect("..")
+        
+    # ---------------------------------------
+    # 👤 MEJORA: GESTIÓN DE CLIENTE CON VALIDACIÓN
+    # ---------------------------------------
+    @admin.display(description="Cliente")
+    def col_cliente(self, obj):
+        # 1. Si ya existe la relación con un Cliente
+        if obj.cliente:
+            url = reverse("admin:appfinancia_clientes_change", args=[obj.cliente.pk])
+            # Si el cliente está vetado (según tu campo cliente_vetado del modelo)
+            color = "#d32f2f" if obj.cliente_vetado == "SI" else "#2e7d32"
+            texto = "🚫 Cliente Vetado" if obj.cliente_vetado == "SI" else "✅ Ver Cliente"
+            return format_html(
+                '<a href="{}" style="color:{}; font-weight:bold;">{}</a>', 
+                url, color, texto
+            )
+        
+        # 2. Si no existe, permitir creación
+        url = reverse("admin:appfinancia_clientes_add")
+        params = urlencode({
+            'cliente_id': obj.numero_documento,
+            'nombre': obj.nombre_completo,
+            'email': obj.correo_electronico,
+            'telefono': obj.telefono,
+            #'tipo_documento': "CC",
+        })
+        return format_html(
+            '<a class="button" style="background:#447e9b;" href="{}?{}">➕ Crear Cliente</a>',
+            url, params
+        )
+
+    # ---------------------------------------
+    # 💰 MEJORA: DESEMBOLSO CON DOBLE VALIDACIÓN
+    # ---------------------------------------
+    @admin.display(description="Desembolso")
+    def col_desembolso(self, obj):
+        # 1. Si ya existe el desembolso
+        if obj.desembolso:
+            url = reverse("admin:appfinancia_desembolsos_change", args=[obj.desembolso.pk])
+            return format_html(
+                '<a href="{}" style="color:#1565c0; font-weight:bold;">💸 Ver Desembolso</a>', 
+                url
+            )
+        
+        # 2. VALIDACIÓN 1: ¿Está aprobado?
+        if obj.estado_solicitud != 'APROBADO':
+            return format_html('<small style="color: #999;">⏳ Esperando Aprobación</small>')
+
+        # 3. VALIDACIÓN 2: ¿Existe el cliente vinculado?
+        # Validamos contra obj.cliente (la FK en Financiacion)
+        if not obj.cliente:
+            return format_html('<small style="color: #d32f2f; font-weight:bold;">👤 Falta crear cliente</small>')
+
+        # 4. Si pasa ambas, mostrar botón
+        url = reverse("admin:appfinancia_desembolsos_add")
+        def v(valor): return valor if valor is not None else ""
+
+        params = urlencode({
+            #'cliente': obj.cliente.pk, # Aquí ya estamos seguros que obj.cliente existe
+            'cliente_id': obj.numero_documento,
+            'fecha_desembolso': obj.fecha_solicitud.strftime('%Y-%m-%d') if obj.fecha_solicitud else '',
+            'valor': v(obj.valor_prestamo),
+            'valor_cuota_1': v(obj.valor_cuota_inicial),
+            'valor_seguro_mes': v(obj.valor_seguro_vida),
+            'tasa': v(obj.tasa),
+            'plazo_en_meses': v(obj.numero_cuotas),
+        })
+
+        return format_html(
+            '<a class="button" style="background:#79aec8;" href="{}?{}">🏦 Desembolsar</a>',
+            url, params
+        )
+        
+    #================================================
+    # Guardar y generar el Plan de Pagos
+    #================================================
+    def save_model(self, request, obj, form, change):
+        # 1. Guardar la financiación
+        super().save_model(request, obj, form, change) 
+        
+        # 2. Generar el plan de pagos
+        try:
+            # Usamos el valor real del objeto que se está guardando
+            identificador = obj.solicitud_id
+            
+            f_plan_pagos_cuota_fija(identificador)
+            
+            # CORRECCIÓN AQUÍ: Cambiamos {obj.id} por {obj.solicitud_id}
+            self.message_user(
+                request, 
+                f"Plan de pagos generado exitosamente para la solicitud {obj.solicitud_id}"
+            )
+            
+        except Exception as e:
+            self.message_user(
+                request, 
+                f"Error al generar plan de pagos: {str(e)}", 
+                level=messages.ERROR
+            )

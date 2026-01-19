@@ -2,29 +2,27 @@
 {% load static %}
 
 {% block content %}
-<h1>Regularizar Pagos</h1>
+<h1>📝 Regularizar pago #{{ pago.pago_id }}</h1>
 
-<fieldset class="module aligned">
-    <h2>Datos del Pago</h2>
-    <p><b>Pago ID:</b> {{ pago.pago_id }}</p>
-    <p><b>Fecha Pago:</b> {{ pago.fecha_pago }}</p>
-    <p><b>Estado:</b> {{ pago.estado_pago }}</p>
-    <p><b>Clase Movimiento:</b> {{ pago.clase_movimiento }}</p>
-    <p><b>Valor:</b> {{ pago.valor_pago }}</p>
-    <p><b>Ref Cliente 3:</b> {{ pago.ref_cliente_3 }}</p>
-</fieldset>
-
-<form method="post">
+<form method="post" novalidate>
     {% csrf_token %}
+
     <fieldset class="module aligned">
-        <h2>Asignación</h2>
-        {{ form.as_p }}
+        <div class="form-row">
+            {{ form.prestamo_id_real.label_tag }}
+            {{ form.prestamo_id_real }}
+            {% if form.prestamo_id_real.help_text %}
+                <p class="help">{{ form.prestamo_id_real.help_text }}</p>
+            {% endif %}
+            {{ form.prestamo_id_real.errors }}
+        </div>
     </fieldset>
 
     <div class="submit-row">
         <input type="submit" value="Guardar" class="default">
-        <a href="javascript:history.back()" class="button">Cancelar</a>
+        <a class="button cancel-link" href="{% url 'admin:appfinancia_inbox_pagosdetalle_change' pago.pago_id %}">
+            Cancelar
+        </a>
     </div>
 </form>
 {% endblock %}
-
