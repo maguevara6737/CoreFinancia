@@ -1,24 +1,56 @@
-from django.contrib.auth.decorators import login_required
-from django.db import models,transaction
-from django.core.validators import MaxLengthValidator, MinLengthValidator, EmailValidator
-from django.core.validators import MinValueValidator, MaxValueValidator
-from django.core.exceptions import ValidationError
-from datetime import date, timedelta
-from dateutil.relativedelta import relativedelta # type: ignore
-from django.utils import timezone
+# ======================================================
+# 1. Librerías estándar de Python
+# ======================================================
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+
+# ======================================================
+# 2. Librerías de terceros
+# ======================================================
+from dateutil.relativedelta import relativedelta
+from smart_selects.db_fields import ChainedForeignKey
+from django.utils.formats import number_format
+
+# ======================================================
+# 3. Django: Núcleo y Base de Datos
 from django.conf import settings
-from decimal import ROUND_HALF_UP, Decimal
-from datetime import datetime
+from django.db import models, transaction
+# ======================================================
+
+# ======================================================
+# 4. Django: Autenticación y Usuarios
+# ======================================================
+from django.contrib.auth.models import User
+from django.contrib.auth.decorators import login_required
+
+# ======================================================
+# 5. Django: Validadores y Excepciones
+# ======================================================
+from django.core.exceptions import ValidationError
+from django.core.validators import (
+    EmailValidator, 
+    MaxLengthValidator, 
+    MaxValueValidator, 
+    MinLengthValidator, 
+    MinValueValidator
+)
+
+# ======================================================
+# 6. Django: Utilidades (Fechas y HTML)
+# ======================================================
+
+from django.utils import timezone
+from django.utils.html import format_html
+
 from django.db.models import Sum
-#from .utils import get_politicas
+from decimal import Decimal, ROUND_HALF_UP
 
-import math                   #2026-01-08
-# Create your models here.
-#0---- seccion en menu ----
-# appfinancia/models.py
-from django.db import models
+    
+# Nota: Si necesitas 'get_politicas' de .utils, recuerda el riesgo de
+# referencia circular. Es mejor importarlo dentro del método que lo use.
 
-# === AGREGAR AL FINAL DEL ARCHIVO ===
+
+# === Consultas y  reportes en el menu lateral ===
 class ConsultasReportes(models.Model):
     """
     Modelo ficticio para agrupar vistas de consultas y reportes en el admin.
@@ -39,9 +71,8 @@ class ConsultasReportesProxy(ConsultasReportes):
         proxy = True
         verbose_name = "Consulta de Causación"
         verbose_name_plural = "Consultas y Reportes"
-
-        
-#1---------------------------------------------------------------------------------------*
+    
+#-----------------------------------------------------------------------------------------
 class Tipos_Identificacion(models.Model):
     """
     Modelo para almacenar los tipos de identificación (ej. CC, TI, CE, PA, NIT).
@@ -71,8 +102,7 @@ class Tipos_Identificacion(models.Model):
             self.descripcion_id = self.descripcion_id.strip().upper()
         super().save(*args, **kwargs)
     
-    
-#2---------------------------------------------------------------------------------------* 
+#----------------------------------------------------------------------------------------- 
 class Asesores(models.Model):
     """
     Modelo para almacenar información de los asesores.
@@ -119,7 +149,7 @@ class Asesores(models.Model):
             self.asesor_nombre = self.asesor_nombre.strip().upper()
         super().save(*args, **kwargs)  
 
-#3---------------------------------------------------------------------------------------*
+#-----------------------------------------------------------------------------------------
 class Aseguradoras(models.Model):
     """
     Modelo para almacenar información de las aseguradoras.
@@ -166,7 +196,8 @@ class Aseguradoras(models.Model):
             self.aseguradora_nombre = self.aseguradora_nombre.strip().upper()
         super().save(*args, **kwargs)
         
-#4---------------------------------------------------------------------------------------*
+
+#-------------------------------------------------------------------------------------*
 
 class Tasas(models.Model):
     TIPO_TASA_OPCIONES = [
@@ -200,9 +231,9 @@ class Tasas(models.Model):
 
     def __str__(self):
         return f"{self.tipo_tasa} - {self.fecha_aplica}: {self.tasa}%"
-        
+      
+#-----------------------------------------------------------------------------------------
 
-#5---------------------------------------------------------------------------------------*
 class Departamentos(models.Model):
     """
     Modelo que representa los departamentos (estados, regiones, etc.).
@@ -235,7 +266,7 @@ class Departamentos(models.Model):
             self.departamento_nombre = self.departamento_nombre.strip().upper()
         super().save(*args, **kwargs)
 
-#6---------------------------------------------------------------------------------------*
+#-----------------------------------------------------------------------------------------
 class Municipios(models.Model):
     """
     Modelo que representa los municipios, asociados a un departamento.
@@ -276,11 +307,8 @@ class Municipios(models.Model):
             self.municipio_nombre = self.municipio_nombre.strip().upper()
         super().save(*args, **kwargs)
         
-#7---------------------------------------------------------------------------------------*
+#-----------------------------------------------------------------------------------------
 class Vendedores(models.Model):
-    """
-    Modelo para gestionar vendedores.
-    """
     ESTADO_CHOICES = [
         ('HABILITADO', 'HABILITADO'),
         ('DESHABILITADO', 'DESHABILITADO'),
@@ -323,18 +351,9 @@ class Vendedores(models.Model):
             self.cod_venta_nombre = self.cod_venta_nombre.strip().upper()
         super().save(*args, **kwargs)
         
-
-
-#8---------------------------------------------------------------------------------------*
-# models.py
-#from django.db import models
-#from django.core.exceptions import ValidationError
+#-----------------------------------------------------------------------------------------
 
 class Numeradores(models.Model):
-    """
-    Tabla única global de contadores secuenciales.
-    Solo debe existir una fila. Los valores pueden editarse, pero NUNCA disminuir.
-    """
     numerador_operacion  = models.PositiveIntegerField(default=1, help_text="Contador para operacion contables.")
     numerador_transaccion = models.PositiveIntegerField(default=1, help_text="Contador para transacciones.")
     numerador_prestamo = models.PositiveIntegerField(default=1, help_text="Contador para préstamos.")
@@ -381,13 +400,10 @@ class Numeradores(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
         
-#9---------------------------------------------------------------------------------------*
-from smart_selects.db_fields import ChainedForeignKey                                                  
+
+#-----------------------------------------------------------------------------------------
+
 class Clientes(models.Model):
-    """
-    Modelo para gestionar clientes.
-    Clave primaria: cliente_id
-    """
     ESTADO_CHOICES = [
         ('HABILITADO', 'HABILITADO'),
         ('DESHABILITADO', 'DESHABILITADO'),
@@ -434,21 +450,7 @@ class Clientes(models.Model):
         to_field='departamento_id',
         help_text="Departamento del cliente."
     )
-    '''
-    #municipio = models.ForeignKey(
-    municipio = models.ForeignKey(
-
-        'Municipios',
-        on_delete=models.PROTECT,
-        chained_field="departamento",       #2025/12/17
-        chained_model_field="departamento", #2025/12/17
-        show_all=False,                     #2025/12/17
-        auto_choose=True,                   #2025/12/17
-        sort=True,                           #2025/12/17
-        help_text="Municipio del cliente. Debe pertenecer al departamento seleccionado."
-    )
-    '''    
-    # 2. CAMBIA 'models.ForeignKey' por 'ChainedForeignKey'
+   
     municipio = ChainedForeignKey(
         'appfinancia.Municipios', # El modelo al que apunta
         chained_field="departamento", # El nombre del campo LOCAL en este modelo (Clientes)
@@ -459,7 +461,7 @@ class Clientes(models.Model):
         on_delete=models.CASCADE, # También necesita el on_delete como cualquier FK
         help_text="Municipio del cliente. Debe pertenecer al departamento seleccionado."
     )
-
+    
     email = models.EmailField(
         max_length=120,
         validators=[EmailValidator()],
@@ -487,7 +489,6 @@ class Clientes(models.Model):
 
     def __str__(self):
         return f"{self.nombre} {self.apellido} - {self.cliente_id}" 
-
   
     def clean(self):
         super().clean()
@@ -501,7 +502,6 @@ class Clientes(models.Model):
             if self.fecha_nacimiento < fecha_minima:
                 raise ValidationError({'fecha_nacimiento': 'La fecha debe ser posterior al 01/01/1900.'})
         
-
        # Validar fecha_nacimiento con las politicas de crédito
         if self.fecha_nacimiento:
             hoy = date.today()
@@ -518,7 +518,6 @@ class Clientes(models.Model):
                     })
             except RuntimeError as e:
                 raise ValidationError({'fecha_nacimiento': str(e)})
-
 
         # Validar coherencia geográfica
         if self.municipio and self.departamento:
@@ -545,17 +544,7 @@ class Clientes(models.Model):
             self.direccion = self.direccion.strip().upper()
         super().save(*args, **kwargs)
 
-#10---------------------------------------------------------------------------------------*
-#desembolsos
-
-#from django.db import models
-#from django.core.exceptions import ValidationError
-#from django.utils import timezone
-#from datetime import date
-#from dateutil.relativedelta import relativedelta
-#from .utils import get_next_prestamo_id, get_politicas
-
-
+#-----------------------------------------------------------------------------------------
 class Desembolsos(models.Model):
     ESTADO_CHOICES = [
         ('ELABORACION', 'Elaboración'),
@@ -591,10 +580,20 @@ class Desembolsos(models.Model):
     )
 
     cliente_id = models.ForeignKey('Clientes', on_delete=models.PROTECT, to_field='cliente_id')
-    asesor_id  = models.ForeignKey('Asesores', on_delete=models.PROTECT, to_field='asesor_id',db_column='asesor_id')
-    aseguradora_id  = models.ForeignKey('Aseguradoras', on_delete=models.PROTECT, to_field='aseguradora_id',db_column='aseguradora_id')
-    vendedor_id  = models.ForeignKey('Vendedores', on_delete=models.PROTECT, to_field='cod_venta_id',db_column='vendedor_id',
-                                     help_text="Codigo de venta")
+
+    asesor_id  = models.ForeignKey('Asesores', on_delete=models.PROTECT, to_field='asesor_id',db_column='asesor_id',blank=True)
+    aseguradora_id  = models.ForeignKey('Aseguradoras', on_delete=models.PROTECT, to_field='aseguradora_id',db_column='aseguradora_id',blank=True)
+    
+    vendedor_id  = models.ForeignKey(
+        'Vendedores', 
+        on_delete=models.PROTECT,
+        to_field='cod_venta_id',
+        db_column='vendedor_id',
+        null=True,
+        blank=True, 
+        help_text="Codigo de venta"
+    )
+
     
     tipo_tasa = models.CharField(
         max_length=15, # Un poco más de margen por si acaso
@@ -895,9 +894,8 @@ class Desembolsos(models.Model):
                         # Campos con blank=True/null=True quedarán como None si no se asignan
                     )
 #Fin desembolsos
-
-
-#11---------------------------------------------------------------------------------------*
+        
+#-----------------------------------------------------------------------------------------
 class Conceptos_Transacciones(models.Model):   #2025-11-15 NOTA: incluir concepto de cuota
     """
     Clase que almacena los códigos y conceptos de transacciones utilizados en el sistema.
@@ -950,12 +948,7 @@ class Conceptos_Transacciones(models.Model):   #2025-11-15 NOTA: incluir concept
             self.descripcion = self.descripcion.strip().upper()
         super().save(*args, **kwargs)
 
-
-
-#12--------------------------------------------------------------------------------------*
-
-# models.py
-#from django.db import models
+#-----------------------------------------------------------------------------------------
 
 class Comentarios(models.Model):
     """
@@ -1013,13 +1006,9 @@ class Comentarios(models.Model):
             self.comentario = self.comentario.strip().upper()
         super().save(*args, **kwargs)
 
-#13--------------------------------------------------------------------------------------*
-# appfinancia/models.py
+#-----------------------------------------------------------------------------------------
 
 class Comentarios_Prestamos(models.Model):
-    """
-    Registro histórico y no modificable de comentarios asociados a un préstamo.
-    """
     numero_comentario = models.AutoField(
         primary_key=True,
         help_text="Número secuencial único del comentario (generado automáticamente)."
@@ -1037,7 +1026,6 @@ class Comentarios_Prestamos(models.Model):
         db_column='prestamo_id',
         help_text="Préstamo asociado (admite múltiples comentarios)."
     )
-
 
     comentario_catalogo = models.ForeignKey(
         'Comentarios',
@@ -1074,13 +1062,9 @@ class Comentarios_Prestamos(models.Model):
                 raise ValueError("No se puede modificar el usuario creador.")
         
         super().save(*args, **kwargs)
- 
-        
-#14--------------------------------------------------------------------------------------*
-# appfinancia/models.py
-#from django.db import models
-#from django.core.exceptions import ValidationError
-#from decimal import Decimal
+  
+#-----------------------------------------------------------------------------------------
+
 class Politicas(models.Model):
     edad_min = models.PositiveSmallIntegerField(
         default=18,
@@ -1138,7 +1122,6 @@ class Politicas(models.Model):
         help_text="Dias máximo desembolsos con fecha anterior"
     )
 
-
     class Meta:
         verbose_name = "Política Global"
         verbose_name_plural = "Políticas Globales"
@@ -1173,13 +1156,12 @@ class Politicas(models.Model):
         """Para usar en cualquier parte: Politicas.load()"""
         obj, created = cls.objects.get_or_create(pk=1)
         return obj
-#15--------------------------------------------------------------------------------------*
 
 #=============================== BACKEND ================================================================= 2025-11-15
 #2025-11-15  Elimino clase abstracta common_fields, elimino Plan_pagos. Normalizo Prestamos, incluyo metodo consulta cuotas y
 #            se incluye el plan pagos en la historia prestamos.
-#16--------------------------------------------------------------------------------------------------------
-#2025-11-24  11:19pm el campo prestamo_id queda OneToOneField 
+#-----------------------------------------------------------------------------------------
+
 class Prestamos(models.Model):
 
     ESTADO_PRESTAMO_CHOICES = [                   #2026-01-11 <--- para reversion
@@ -1588,8 +1570,6 @@ class Prestamos(models.Model):
         - Menos intereses pagados reales (componente='INTERES')
         """
         from .models import Fechas_Sistema, Conceptos_Transacciones, Detalle_Aplicacion_Pago
-        from django.db.models import Sum
-        from decimal import Decimal
 
         if fecha_corte is None:
             fecha_sistema = Fechas_Sistema.objects.first()
@@ -1703,9 +1683,6 @@ class Prestamos(models.Model):
         Calcula el adeudo detallado para aplicar_pago.
         - Usa los mismos métodos que el estado de cuenta.
         """
-        from .models import Fechas_Sistema
-        from decimal import Decimal, ROUND_HALF_UP
-
         if fecha_liquidacion is None:
             fecha_sistema = Fechas_Sistema.load()  # o Fechas_Sistema.objects.first()
             if not fecha_sistema or not fecha_sistema.fecha_proceso_actual:
@@ -1842,10 +1819,6 @@ class Prestamos(models.Model):
 
         return sorted(cuotas_validas, key=lambda x: x['numero_cuota'])
  
-    #___________________________________________________________________________________________
-#
-#17--------------------------------------------------------------------------------------------------------
-#2025-11-15 actualizo Historia con campos de cuotas
 
 class Historia_Prestamos(models.Model):
     ESTADO_CHOICES = [
@@ -1910,13 +1883,7 @@ class Historia_Prestamos(models.Model):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
 
-
-
- 
-#18--------------------------------------------------------------------------------------------------------
-#2025-11-15 Elimino modelo Planpagos se integra con Historia_prestamos
-
-#19--------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
 class Bitacora(models.Model):
     secuencial = models.AutoField(primary_key=True)
     fecha_hora = models.DateTimeField(auto_now_add=True)  # Fecha y hora del sistema cuando se crea
@@ -1933,8 +1900,7 @@ class Bitacora(models.Model):
     def __str__(self):
         return f'Bitácora #{self.secuencial} - {self.user_name}'
 
-#20 -----------------------------------------------------------
-# Create your models here.                movimiento
+#-----------------------------------------------------------------------------------------
 class Movimientos(models.Model):
     id_movimiento = models.AutoField(primary_key=True)
     cliente_id =  models.ForeignKey('Clientes',
@@ -1956,7 +1922,7 @@ class Movimientos(models.Model):
         help_text="Fecha valor"
     )
 
-#22---------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
 class Pagos(models.Model):
     TIPO_CUENTA_CHOICES = [
         ('AHORROS', 'Ahorros'),
@@ -1972,23 +1938,18 @@ class Pagos(models.Model):
         ('REVERSADO', 'Reversado'),
     ]
 
-
     ESTADO_CONCILIACION_CHOICES = [
         ('cliente o prestamo no existe', 'Cliente o préstamo no existe'),
         ('prestamo_cancelado', 'Préstamo cancelado'),
     ]
-
-    # Clave primaria
+    
     pago_id = models.BigIntegerField(primary_key=True)
- 
-    # ------------ AJUSTE 1: eliminar ForeignKey -----------------
-    # Antes era ForeignKey a Pagos_Archivos. Ahora es un índice repetible.
+
     nombre_archivo_id = models.CharField(
         max_length=200,
         help_text="Identificador del archivo de origen (no es ForeignKey)",
         db_index=True
     )
-    # ----------------------------------------------------------------
 
     fecha_carga_archivo = models.DateTimeField(default=timezone.now, editable=False)
 
@@ -1999,16 +1960,15 @@ class Pagos(models.Model):
     canal_red_pago = models.CharField(max_length=100, blank=True)
     ref_bancaria = models.CharField(max_length=100, blank=True)
     ref_red = models.CharField(max_length=100, blank=True)
-    ref_cliente_1 = models.CharField(max_length=100, blank=True)
-    ref_cliente_2 = models.CharField(max_length=100, blank=True)
-    ref_cliente_3 = models.CharField(max_length=100, blank=True)
+    ref_cliente_1 = models.CharField(max_length=200, blank=True)
+    ref_cliente_2 = models.CharField(max_length=200, blank=True)
+    ref_cliente_3 = models.CharField(max_length=200, blank=True)
 
     # Reportado por el banco
     estado_transaccion_reportado = models.CharField(max_length=20, blank=True)
     cliente_id_reportado = models.CharField(max_length=20, blank=True)
     prestamo_id_reportado = models.CharField(max_length=20, blank=True)
     poliza_id_reportado = models.CharField(max_length=20, blank=True)
-
 
     # Resultados de conciliación
     cliente_id_real = models.BigIntegerField(null=True, blank=True)
@@ -2033,22 +1993,21 @@ class Pagos(models.Model):
     creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, editable=False)
 
     class Meta:
-        verbose_name = "Pagos confirmados"
-        verbose_name_plural = "Pagos confirmados"
+        verbose_name = "Pagos: 3.Confirmados"
+        verbose_name_plural = "Pagos: 3.Confirmados"
+        
         permissions = [
                     ("can_revert_pago", "Puede revertir aplicaciones de pago"),
                 ]
+
     def __str__(self):
         return f"Pago {self.pago_id} - {self.valor_pago}"
 
-#__________________________________________________________________________________________________
+#------------------------------------------------------------------------------------------
+
 # Detalle_Aplicacion  para saber el detalle de pago versus componentes cuotas   2025-11-25
 class Detalle_Aplicacion_Pago(models.Model):
     pago = models.ForeignKey('Pagos', on_delete=models.CASCADE, related_name='detalles_aplicacion')
-    
-    #pago=models.BigIntegerField()       
-    # 🔗 historia_prestamo: hace Referencia al registro "padre" en Historia_Prestamos.
-    # Para INTMORA (interés de mora), se usa el registro PLANCAP de la misma cuota como ancla/referencia.
     historia_prestamo = models.ForeignKey('Historia_Prestamos', on_delete=models.CASCADE)
     monto_aplicado = models.DecimalField(max_digits=15, decimal_places=2)
     componente = models.CharField(max_length=15, choices=[
@@ -2067,15 +2026,12 @@ class Detalle_Aplicacion_Pago(models.Model):
     def __str__(self):
         return f"{self.componente}: {self.monto_aplicado} → Cuota {self.historia_prestamo.numero_cuota}"
 
-#23---------------------------------------------------------------------------------------
-#=====CONTROL DE FECHAS DEL SISTEMA
 #-----------------------------------------------------------------------------------------
-# appfinancia/models.py
 #from django.db import models
 #from django.conf import settings
-#from django.core.exceptions import ValidationError
 #from django.utils import timezone
-#from datetime import date, timedelta
+#from django.core.exceptions import ValidationError
+#from datetime import timedelta
 
 class Fechas_Sistema(models.Model):
 
@@ -2088,10 +2044,16 @@ class Fechas_Sistema(models.Model):
         ('MANUAL', 'Manual'),
         ('AUTOMATICO', 'Automático'),
     ]
+    
+    AMBIENTE_CHOICES = [
+        ('PRODUCCION', 'Producción'),
+        ('CAPACITACION', 'Capacitación'),
+        ('PRUEBAS', 'Pruebas'),
+    ]
 
-    fecha_proceso_actual = models.DateField()
-    fecha_proceso_anterior = models.DateField()
-    fecha_proximo_proceso = models.DateField()
+    fecha_proceso_actual = models.DateField(verbose_name="Fecha Proceso Actual")
+    fecha_proceso_anterior = models.DateField(verbose_name="Fecha Proceso Anterior")
+    fecha_proximo_proceso = models.DateField(verbose_name="Fecha Próximo Proceso")
 
     estado_sistema = models.CharField(
         max_length=8,
@@ -2110,17 +2072,40 @@ class Fechas_Sistema(models.Model):
     cambiado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
-        editable=False
+        editable=False,
+        null=True, # Permitir null temporalmente para evitar errores de integridad
+        blank=True
     )
-
+    
+    ambiente_sistema = models.CharField(
+        max_length=12,
+        choices=AMBIENTE_CHOICES, 
+        default='PRUEBAS',
+        help_text="Entorno del sistema: Producción, Capacitación, Pruebas"
+    )
+    
+    email_entrante = models.CharField(
+        max_length=100,
+        null=True, 
+        blank=True,
+        help_text="Cuenta de correo para solicitudes de Financiación"
+    )
+    
+    email_saliente = models.CharField(
+        max_length=300,
+        null=True, 
+        blank=True,
+        help_text="Lista de correos para copias de salida"
+    )
+    
     class Meta:
-        verbose_name = "Fecha de Sistema"
-        verbose_name_plural = "Fecha de Sistema"
+        verbose_name = "Parámetros Sistema"
+        verbose_name_plural = "Parámetros Sistema"
 
     def __str__(self):
-        return f"Fecha de Proceso: {self.fecha_proceso_actual}"
+        return f"Fecha de Proceso: {self.fecha_proceso_actual} - ({self.ambiente_sistema})"
 
-    # 🔹 SINGLETON
+    # 🔹 SINGLETON: Solo permite un registro con ID 1
     def save(self, *args, **kwargs):
         self.pk = 1
         super().save(*args, **kwargs)
@@ -2136,33 +2121,80 @@ class Fechas_Sistema(models.Model):
 
     # 🔹 VALIDACIONES
     def clean(self):
-        if self.fecha_proceso_anterior >= self.fecha_proceso_actual:
-            raise ValidationError("La fecha anterior debe ser menor a la actual.")
 
-        if self.fecha_proceso_actual >= self.fecha_proximo_proceso:
-            raise ValidationError("La fecha próxima debe ser mayor a la actual.")
+        if self.fecha_proceso_anterior and self.fecha_proceso_actual:
+            if self.fecha_proceso_anterior >= self.fecha_proceso_actual:
+                raise ValidationError("La fecha anterior debe ser menor a la actual.")
+
+        if self.fecha_proceso_actual and self.fecha_proximo_proceso:
+            if self.fecha_proceso_actual >= self.fecha_proximo_proceso:
+                raise ValidationError("La fecha próxima debe ser mayor a la actual.")
 
     @classmethod
     def load(cls):
-        obj, _ = cls.objects.get_or_create(
-            pk=1,
-            defaults={
-                'fecha_proceso_anterior': timezone.now().date() - timedelta(days=1),
-                'fecha_proceso_actual': timezone.now().date(),
-                'fecha_proximo_proceso': timezone.now().date() + timedelta(days=1),
-                'estado_sistema': 'ABIERTO',
-                'modo_fecha_sistema': 'AUTOMATICO',
-                'cambiado_por_id': 1,
-            }
-        )
+        """
+        Carga el registro único. Si no existe, lo crea de forma segura.
+        """
+        obj = cls.objects.filter(pk=1).first()
+        if not obj:
+            # Intentamos obtener el primer superusuario disponible para el campo cambiado_por
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            admin_user = User.objects.filter(is_superuser=True).first()
+            
+            hoy = timezone.now().date()
+            obj = cls.objects.create(
+                pk=1,
+                fecha_proceso_anterior=hoy - timedelta(days=1),
+                fecha_proceso_actual=hoy,
+                fecha_proximo_proceso=hoy + timedelta(days=1),
+                cambiado_por=admin_user,
+                ambiente_sistema='PRUEBAS',
+                estado_sistema='ABIERTO',
+                modo_fecha_sistema='AUTOMATICO'
+            )
+
         return obj
 
-    def delete(self, *args, **kwargs):
-        raise ValidationError("No se permite eliminar la Fecha de Sistema.")
+        
 
-#=========================================================================================
-#TABLA_1 : modelo de 'InBox_PagosCabezal'
-#=========================================================================================
+    def delete(self, *args, **kwargs):
+        raise ValidationError("No se permite eliminar los Parámetros del Sistema.")
+
+
+#-----------------------------------------------------------------------------------------
+class Migrados(models.Model):
+    """
+    Registro de préstamos migrados desde archivos Excel.
+    Permite identificar y borrar de forma segura los datos cargados por migración.
+    """
+    prestamo_id = models.BigIntegerField(
+        help_text="ID del préstamo migrado (coincide con Desembolsos.prestamo_id)"
+    )
+    origen_migracion = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Nombre del archivo Excel de origen (ej. 'aresmig.xlsx')"
+    )
+    fecha_migracion = models.DateField(
+        auto_now_add=True,
+        help_text="Fecha en que se realizó la migración"
+    )
+    hora_migracion = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Hora exacta en que se registró la migración"
+    )
+
+    class Meta:
+        verbose_name = "Préstamo Migrado"
+        verbose_name_plural = "Préstamos Migrados"
+        ordering = ['-fecha_migracion', '-hora_migracion']
+
+    def __str__(self):
+        return f"Préstamo {self.prestamo_id} migrado el {self.fecha_migracion} ({self.origen_migracion})"
+
+#-----------------------------------------------------------------------------------------
 class InBox_PagosCabezal(models.Model):
 
     FORMATO_CHOICES = [
@@ -2217,8 +2249,10 @@ class InBox_PagosCabezal(models.Model):
     )
 
     class Meta:
-        verbose_name = "InBox archivos de Pagos"
-        verbose_name_plural = "InBox archivos de Pagos"
+
+        verbose_name = "Pagos: 1.Inbox de Archivos"
+        verbose_name_plural = "Pagos: 1.Inbox de Archivos"
+
         ordering = ['-fecha_carga_archivo']
 
     def __str__(self):
@@ -2230,17 +2264,14 @@ class InBox_PagosCabezal(models.Model):
 
         super().save(*args, **kwargs)
 
-
-#========================================================================================================
-#TABLA_2 : modelo de 'InBox_PagosDetalle'
-#========================================================================================================
+#-----------------------------------------------------------------------------------------
 class InBox_PagosDetalle(models.Model):    
 
     CLASE_MOV = [
         ('PAGO_PSE', 'Pago PSE'),
         ('PAGO_BANCOL', 'Pago Bancolombia'),
         ('LOTE_PSE', 'Lote PSE'),
-        ('EXLUIDO', 'Excludio'),
+        ('EXLUIDO', 'Excluido'),
     ]
 
     TIPO_CUENTA_CHOICES = [
@@ -2256,9 +2287,9 @@ class InBox_PagosDetalle(models.Model):
         ('EXCLUIDO','Excludio')
     ]
     ESTADO_FRAGMENTACION_CHOICES = [
-        ('NO_REQUIERE', 'No requiere'),
-        ('A_FRAMENTAR', 'A fragmentar'),
-        ('FRAGMENTADO', 'Fragmentado'),
+        ('NO_REQUIERE', 'NO_REQUIERE'),
+        ('A_FRAGMENTAR', 'A_FRAGMENTAR'),
+        ('FRAGMENTADO', 'FRAGMENTADO'),
     ]
     
     ESTADO_CONCILIACION_CHOICES = [
@@ -2266,7 +2297,11 @@ class InBox_PagosDetalle(models.Model):
         ('NO', 'No'),
     ]
     
-
+    CUOTA_INICIAL_CHOICES = [
+        ('SI', 'Si'),
+        ('NO', 'No'),
+    ]
+    
     # Clave primaria autonumérica
     pago_id = models.BigAutoField(primary_key=True)
     lote_pse = models.BigIntegerField(null=True, blank=True)
@@ -2303,71 +2338,294 @@ class InBox_PagosDetalle(models.Model):
 
     # Conciliado
     cliente_id_real = models.ForeignKey('Clientes', on_delete=models.SET_NULL, null=True, blank=True)
-    prestamo_id_real = models.ForeignKey('Prestamos', on_delete=models.SET_NULL, null=True, blank=True)    
+    prestamo_id_real = models.ForeignKey(Prestamos,on_delete=models.SET_NULL,null=True,blank=True)
     poliza_id_real = models.CharField(max_length=20, blank=True)
 
     # Fechas y horas
-    fecha_pago = models.DateField()
-    fecha_conciliacion = models.DateTimeField(null=True, blank=True)
-
-    # Estados
-    estado_pago = models.CharField(max_length=20, choices=ESTADO_PAGO_CHOICES, null=True)
-    estado_conciliacion = models.CharField(max_length=2, choices=ESTADO_CONCILIACION_CHOICES, null=True, blank=True)
-
-    # Valores
     valor_pago = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    #fecha_pago = models.DateField()
+    fecha_pago = models.DateTimeField()
     
+    estado_pago = models.CharField(max_length=20, choices=ESTADO_PAGO_CHOICES, null=True)
+    
+    conciliacion_id = models.BigIntegerField(null=True,blank=True, db_index=True)
+    fecha_conciliacion = models.DateTimeField(null=True, blank=True)
+    estado_conciliacion = models.CharField(max_length=2, choices=ESTADO_CONCILIACION_CHOICES, null=True, blank=True)
+    cuota_inicial = models.CharField(max_length=2, choices=CUOTA_INICIAL_CHOICES, null=True, blank=True)
+
     # Auditoría
     observaciones = models.CharField(max_length=200, blank=True)
     creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, editable=False)
 
     class Meta:
-        verbose_name = "InBox detalle de pagos"
-        verbose_name_plural = "InBox detalle de pagos"
+        verbose_name = "Pagos: 4.Consultas"
+        verbose_name_plural = "Pagos: 4.Consultas"
 
     def __str__(self):
-        return f"Pago {self.pago_id} - {self.valor_pago}"
-
+        valor = number_format(
+            self.valor_pago,
+            decimal_pos=2,
+            use_l10n=True,
+            force_grouping=True
+        )
+        
+        return f"Pago {self.pago_id} - $ {valor}"
+         
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+    
+        super().save(*args, **kwargs)
+    
+        if self.clase_movimiento == "PAGO_BANCOL":
+            update_fields = []
+    
+            if self.lote_pse != self.pago_id:
+                self.lote_pse = self.pago_id
+                update_fields.append("lote_pse")
+    
+            if not self.fecha_conciliacion:
+                self.fecha_conciliacion = timezone.now()
+                update_fields.append("fecha_conciliacion")
+    
+            if update_fields:
+                super().save(update_fields=update_fields)
 
 #-----------------------------------------------------------------------------------------
-# appfinancia/models.py
 
-class Migrados(models.Model):
-    """
-    Registro de préstamos migrados desde archivos Excel.
-    Permite identificar y borrar de forma segura los datos cargados por migración.
-    """
-    prestamo_id = models.BigIntegerField(
-        help_text="ID del préstamo migrado (coincide con Desembolsos.prestamo_id)"
+class PagosParaRegularizar(InBox_PagosDetalle):
+    class Meta:
+        proxy = True
+        verbose_name = "Pagos: 2.Gestión de pagos"
+        verbose_name_plural = "Pagos: 2.Gestión de pagos"
+        
+#-------Esta Clase aun no se utiliza------------------------------------------------------
+class PagosCuotaInicial(InBox_PagosDetalle):
+    class Meta:
+        proxy = True
+        verbose_name = "InBox Pago para Regularizar"
+        verbose_name_plural = "InBox Pagos para Regularizar"
+
+#-----------------------------------------------------------------------------------------
+class Financiacion(models.Model):
+
+    ESTADO_SOLICITUD_CHOICES = [
+        ('RECIBIDO', 'Recibido'),
+        ('APROBADO', 'Aprobado'),
+        ('NEGADO', 'Negado'),
+    ]
+
+    SI_NO_CHOICES = [
+        ('SI', 'Si'),
+        ('NO', 'No'),
+    ]
+
+    # Identificación
+    solicitud_id = models.BigAutoField(primary_key=True)
+    message_id = models.CharField(max_length=255, unique=True)
+    financiacion_id = models.CharField(max_length=10, unique=True)
+    
+    # Datos del correo
+    email_origen = models.CharField(max_length=100)
+    asunto = models.CharField(max_length=200)
+    fecha_solicitud = models.DateTimeField()
+
+    # Datos del cliente
+    nombre_completo = models.CharField(max_length=100)
+    tipo_documento = models.CharField(max_length=100)
+    numero_documento = models.CharField(max_length=100)
+    
+    # relación REAL (opcional)
+    cliente = models.ForeignKey(Clientes, null=True,blank=True, on_delete=models.PROTECT,related_name="financiaciones")
+    desembolso = models.ForeignKey(Desembolsos, null=True,blank=True, on_delete=models.PROTECT,related_name="financiaciones")
+    num_pago_cuota_1 = models.ForeignKey(InBox_PagosDetalle, null=True,blank=True, on_delete=models.PROTECT,related_name="financiaciones")
+        
+    telefono = models.CharField(max_length=100)
+    correo_electronico = models.CharField(max_length=100)
+
+    # Datos comerciales
+    asesor = models.CharField(max_length=100)
+    agencia = models.CharField(max_length=100)
+    numero_cuotas = models.CharField(max_length=100)
+
+    # Valores
+    valor_prestamo = models.DecimalField(max_digits=13, decimal_places=2, null=True, blank=True)
+    valor_cuota_inicial = models.DecimalField(max_digits=13, decimal_places=2, null=True, blank=True)
+    valor_seguro_vida = models.DecimalField(max_digits=13, decimal_places=2, null=True, blank=True)
+    tasa = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+
+    # Opciones
+    seguro_vida = models.CharField(max_length=2, choices=SI_NO_CHOICES, default='NO')
+    
+    cliente_nuevo = models.CharField(max_length=2, null=True, blank=True)
+    cliente_vetado = models.CharField(max_length=2, null=True, blank=True)
+    
+    # Póliza
+    placas = models.CharField(max_length=100, blank=True)
+    numero_poliza = models.CharField(max_length=100, blank=True)
+
+    # Adjuntos
+    adjunta_cedula = models.FileField(upload_to='financiacion/cedulas/', null=True, blank=True)
+    adjunta_poliza = models.FileField(upload_to='financiacion/polizas/', null=True, blank=True)
+    adjunta_segurovida = models.FileField(upload_to='financiacion/segurovida/', null=True, blank=True)
+    adjunta_archivo_a = models.FileField(upload_to='financiacion/archivo_a/', null=True, blank=True)
+    adjunta_archivo_b = models.FileField(upload_to='financiacion/archivo_b/', null=True, blank=True)
+    adjunta_archivo_c = models.FileField(upload_to='financiacion/archivo_c/', null=True, blank=True)
+    
+
+    # Estado
+    estado_solicitud = models.CharField(
+        max_length=20,
+        choices=ESTADO_SOLICITUD_CHOICES,
+        default='RECIBIDO'
     )
-    origen_migracion = models.CharField(
-        max_length=100,
-        null=True,
-        blank=True,
-        help_text="Nombre del archivo Excel de origen (ej. 'aresmig.xlsx')"
+
+    # Auditoría
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    
+    # --- Checklist de validación ---
+    info_cliente_valida = models.BooleanField(
+        default=False,
+        verbose_name="Información del cliente válida"
     )
-    fecha_migracion = models.DateField(
-        auto_now_add=True,
-        help_text="Fecha en que se realizó la migración"
+    
+    adjunta_documento_identificacion = models.BooleanField(
+        default=False,
+        verbose_name="Adjuntó documento de identificación"
     )
-    hora_migracion = models.DateTimeField(
-        auto_now_add=True,
-        help_text="Hora exacta en que se registró la migración"
+    
+    adjunta_poliza_seguro = models.BooleanField(
+        default=False,
+        verbose_name="Adjuntó póliza de seguro"
+    )
+    
+    adjunta_autorizacion_datos = models.BooleanField(
+        default=False,
+        verbose_name="Adjuntó autorización de datos personales"
+    )
+    
+    adjunta_seguro_vida = models.BooleanField(
+        default=False,
+        verbose_name="Adjuntó seguro de vida (opcional)"
     )
 
     class Meta:
-        verbose_name = "Préstamo Migrado"
-        verbose_name_plural = "Préstamos Migrados"
-        ordering = ['-fecha_migracion', '-hora_migracion']
+        verbose_name = "Financiación"
+        verbose_name_plural = "Financiación"
 
     def __str__(self):
-        return f"Préstamo {self.prestamo_id} migrado el {self.fecha_migracion} ({self.origen_migracion})"
-#-----------------------------------------------------------------------------------------------------------
-from django.db import models
-from django.core.serializers.json import DjangoJSONEncoder
-import json
+        return f"Solicitud #{self.solicitud_id} - {self.nombre_completo}"
+        
+#-----------------------------------------------------------------------------------------
+class Financiacion_PlanPago(models.Model):
+    financiacion = models.OneToOneField(
+        "Financiacion",
+        on_delete=models.CASCADE,
+        related_name="fin_plan_pago"
+    )
 
-# models.py
+    cliente = models.CharField(max_length=150)
+    cliente_id = models.CharField(max_length=30)
+
+    poliza = models.CharField(max_length=100)
+    aseguradora = models.CharField(max_length=100)
+
+    valor_poliza = models.DecimalField(max_digits=15, decimal_places=2)
+    valor_cuota_0 = models.DecimalField(max_digits=15, decimal_places=2)
+    valor_seguro_vida = models.DecimalField(max_digits=15, decimal_places=2)
+
+    tasa_mensual = models.DecimalField(max_digits=10, decimal_places=6)
+    plazo_meses = models.IntegerField()
+
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    aprobado = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "fin_plan_pago"
+
+    def __str__(self):
+        return f"Plan Pago - {self.cliente} ({self.plazo_meses} meses)"
+
+#-----------------------------------------------------------------------------------------
+class Financiacion_DetallePlanPago(models.Model):
+    plan_pago = models.ForeignKey(
+        Financiacion_PlanPago,
+        on_delete=models.CASCADE,
+        related_name="fin_detalles"
+    )
+
+    numero_cuota = models.IntegerField()
+    valor_cuota = models.DecimalField(max_digits=15, decimal_places=2)
+    abono_capital = models.DecimalField(max_digits=15, decimal_places=2)
+    intereses = models.DecimalField(max_digits=15, decimal_places=2)
+    saldo_capital = models.DecimalField(max_digits=15, decimal_places=2)
+
+    fecha_pago = models.DateField(null=True, blank=True)
+    pagada = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "fin_detalle_plan_pago"
+        ordering = ["numero_cuota"]
+
+    def __str__(self):
+        return f"Cuota {self.numero_cuota} - {self.valor_cuota}"
+
+#-----------------------------------------------------------------------------------------
+
+class EntidadesFinancieras(models.Model):
+    from .utils import validar_nit 
+    nit = models.BigIntegerField(
+        primary_key=True,
+        validators=[validar_nit],
+        help_text="Ingrese el NIT seguido del dígito de verificación, sin espacios ni guiones (Ej: 8600000001)."
+    )
+
+    nombre_corto = models.CharField(max_length=15)
+    nombre_completo = models.CharField(max_length=100)
+    nombre_contacto = models.CharField(max_length=50, blank=True, null=True)
+    email = models.EmailField(max_length=100, blank=True, null=True)
+    
+    estado = models.CharField(
+        max_length=13,
+        choices=[('HABILITADO', 'HABILITADO'), ('DESHABILITADO', 'DESHABILITADO')],
+        default='HABILITADO'
+    )
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Entidad Financiera"
+        verbose_name_plural = "Entidades Financieras"
+        ordering = ['nombre_corto']
+
+    def __str__(self):
+        return f"{self.nombre_corto} ({self.nit})"
+
+    def save(self, *args, **kwargs):
+        if self.nombre_corto:
+            self.nombre_corto = self.nombre_corto.strip().upper()
+        if self.nombre_completo:
+            self.nombre_completo = self.nombre_completo.strip().upper()
+        
+        # full_clean es vital para que el validador de NIT se ejecute antes de guardar
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+#---------------------------------------------------------------------------------------------------
+class BitacoraReversiones(models.Model):
+    fecha_reversion = models.DateTimeField(auto_now_add=True)
+    usuario = models.CharField(max_length=100)
+    proceso = models.CharField(max_length=100) # Ej: "REVERSION_DESEMBOLSO"
+    objeto_id = models.CharField(max_length=50) # ID del Desembolso
+    asiento_original = models.CharField(max_length=50, null=True)
+    asiento_reversion = models.CharField(max_length=50, null=True)
+    motivo = models.TextField()
+    
+    # La parte variable estilo diccionario
+    dump_datos_anteriores = models.JSONField() 
+
+    class Meta:
+        verbose_name = "Bitácora de Reversión"
+        verbose_name_plural = "Bitácora de Reversiones"
+#-------------------------------------------------------------------------------------------------/*
 class ComprobantePago(models.Model):
     pago = models.OneToOneField('Pagos', on_delete=models.CASCADE, related_name='comprobante')
     
@@ -2414,59 +2672,3 @@ class ComprobantePago(models.Model):
             
         super().save(*args, **kwargs)
 #---------------------------------------------------------------------------------------------------
-
-class EntidadesFinancieras(models.Model):
-    from .utils import validar_nit
-    # Campo como BigIntegerField 
-    nit = models.BigIntegerField(
-        primary_key=True,
-        validators=[validar_nit],
-        help_text="Ingrese el NIT seguido del dígito de verificación, sin espacios ni guiones (Ej: 8600000001)."
-    )
-
-    nombre_corto = models.CharField(max_length=15)
-    nombre_completo = models.CharField(max_length=100)
-    nombre_contacto = models.CharField(max_length=50, blank=True, null=True)
-    email = models.EmailField(max_length=100, blank=True, null=True)
-    
-    estado = models.CharField(
-        max_length=13,
-        choices=[('HABILITADO', 'HABILITADO'), ('DESHABILITADO', 'DESHABILITADO')],
-        default='HABILITADO'
-    )
-    fecha_creacion = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name = "Entidad Financiera"
-        verbose_name_plural = "Entidades Financieras"
-        ordering = ['nombre_corto']
-
-    def __str__(self):
-        return f"{self.nombre_corto} ({self.nit})"
-
-    def save(self, *args, **kwargs):
-        if self.nombre_corto:
-            self.nombre_corto = self.nombre_corto.strip().upper()
-        if self.nombre_completo:
-            self.nombre_completo = self.nombre_completo.strip().upper()
-        
-        # full_clean es vital para que el validador de NIT se ejecute antes de guardar
-        self.full_clean()
-        super().save(*args, **kwargs)
-#---------------------------------------------------------------------------------------------------
-class BitacoraReversiones(models.Model):
-    fecha_reversion = models.DateTimeField(auto_now_add=True)
-    usuario = models.CharField(max_length=100)
-    proceso = models.CharField(max_length=100) # Ej: "REVERSION_DESEMBOLSO"
-    objeto_id = models.CharField(max_length=50) # ID del Desembolso
-    asiento_original = models.CharField(max_length=50, null=True)
-    asiento_reversion = models.CharField(max_length=50, null=True)
-    motivo = models.TextField()
-    
-    # La parte variable estilo diccionario
-    dump_datos_anteriores = models.JSONField() 
-
-    class Meta:
-        verbose_name = "Bitácora de Reversión"
-        verbose_name_plural = "Bitácora de Reversiones"
-#-------------------------------------------------------------------------------------------------/*

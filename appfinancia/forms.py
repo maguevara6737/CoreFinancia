@@ -1,7 +1,26 @@
+# ======================================================
+# 1. LIBRERÍAS ESTÁNDAR DE PYTHON
+# ======================================================
 from datetime import date
-from django import forms
-from .models import Comentarios_Prestamos, Comentarios, Fechas_Sistema, Prestamos
+from decimal import Decimal, InvalidOperation
 
+# ======================================================
+# 2. LIBRERÍAS DE TERCEROS (DJANGO)
+# ======================================================
+from django import forms
+
+# ======================================================
+# 3. IMPORTACIONES LOCALES (MODELOS DE TU APP)
+# ======================================================
+from .models import (
+    Comentarios,
+    Comentarios_Prestamos,
+    Fechas_Sistema,
+    InBox_PagosDetalle,
+    Prestamos
+)
+
+#-----------------------------------------------------------------------------------------
 class ComentarioPrestamoForm(forms.ModelForm):
     class Meta:
         model = Comentarios_Prestamos
@@ -17,14 +36,7 @@ class ComentarioPrestamoForm(forms.ModelForm):
         # Filtrar solo comentarios habilitados
         self.fields['comentario_catalogo'].queryset = Comentarios.objects.filter(estado='HABILITADO')
         
-#------------------------------
-#formulario para Fragmentación
-#------------------------------
-# appfinancia/forms.py
-from django import forms
-from decimal import Decimal, InvalidOperation
-from .models import Prestamos
-
+#-----------------------------------------------------------------------------------------
 LETTERS = ("A", "B", "C", "D", "E", "F")
 
 class FragmentacionForm(forms.Form):
@@ -95,62 +107,7 @@ class FragmentacionForm(forms.Form):
 
         return cleaned
 
-
-#=============================================
-#Regularización de pagos: clientes y préstamos
-#=============================================
-from django import forms
-from .models import InBox_PagosDetalle, Clientes, Prestamos
-
-
-class RegularizarPagoForm(forms.ModelForm):
-
-    class Meta:
-        model = InBox_PagosDetalle
-        fields = (
-            "cliente_id_real",
-            "prestamo_id_real",
-        )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # Si ya hay cliente, filtrar préstamos
-        if self.instance and self.instance.cliente_id_real:
-            self.fields["prestamo_id_real"].queryset = Prestamos.objects.filter(
-                cliente_id=self.instance.cliente_id_real,
-                saldo__gt=0
-            )
-        else:
-            self.fields["prestamo_id_real"].queryset = Prestamos.objects.none()
-
-# appfinancia/forms.py
-
-#
-#Class CausacionInteresesForm(forms.Form):
-#   fecha_inicio = forms.DateField(
-#       label="Fecha de inicio",
-#       widget=forms.DateInput(attrs={'type': 'date'}),
-#       help_text="Desde esta fecha (inclusive) se causarán intereses."
-#   )
-#   fecha_fin = forms.DateField(
-#       label="Fecha de fin",
-#       widget=forms.DateInput(attrs={'type': 'date'}),
-#       help_text="Hasta esta fecha (inclusive) se causarán intereses."
-#   )
-#  
-# 
-# appfinancia/forms.py
-# ------------------------------------------------------------------------------
-# Formulario para Consulta de Causación (El formulario ajustado)
-# ------------------------------------------------------------------------------
-# forms.py
-# appfinancia/forms.py
-# appfinancia/forms.py
-# appfinancia/forms.py
-from django import forms
-from datetime import date
-
+#-----------------------------------------------------------------------------------------
 class ConsultaCausacionForm(forms.Form):
     REPORTE_OPCIONES = [
         ('pantalla', 'Solo Totales por pantalla'),
@@ -221,3 +178,21 @@ class ReversionPagoMotivoForm(forms.Form):
         required=True
     )
 #/*
+    
+#-----------------------------------------------------------------------------------------
+class RegularizarPagoForm(forms.ModelForm):
+
+    class Meta:
+        model = InBox_PagosDetalle
+        fields = ("prestamo_id_real",)
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+
+        if instance.prestamo_id_real:
+            instance.cliente_id_real = instance.prestamo_id_real.cliente_id
+
+        if commit:
+            instance.save()
+
+        return instance

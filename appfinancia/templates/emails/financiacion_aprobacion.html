@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Aprobación de Financiación</title>
+</head>
+<body style="font-family: Arial, Helvetica, sans-serif; color:#333; line-height:1.6;">
+
+    <p>Estimado(a) <strong>{{ financiacion.nombre_completo }}</strong>,</p>
+
+    <p>
+        Nos permitimos informarle que su solicitud de <strong>FINANCIACIÓN</strong>
+        ha sido <strong>APROBADA</strong>.
+    </p>
+
+    <p>
+        El valor correspondiente a la <strong>cuota inicial</strong> es:
+    </p>
+
+    <p style="font-size:18px; font-weight:bold; color:#2e7d32;">
+        $ {{ financiacion.valor_cuota_inicial }}
+    </p>
+
+    <p>
+        Adjuntamos a este correo los documentos necesarios para continuar con el proceso,
+        así como el <strong>PLAN DE PAGOS</strong> correspondiente a su financiación.
+    </p>
+
+    <p>
+        Si tiene alguna inquietud o requiere información adicional, no dude en comunicarse
+        con nosotros.
+    </p>
+
+    <br>
+
+    <p>
+        Atentamente,<br>
+        <strong>Financia Seguro S.A.S</strong><br>
+        Departamento de Financiaciones
+    </p>
+
+</body>
+</html>

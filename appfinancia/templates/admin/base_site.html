@@ -1,0 +1,45 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% block branding %}
+<h1 id="site-name" style="display:flex; align-items:center; gap:10px;">
+
+    <!-- Nombre del sistema -->
+    <span style="font-weight:600;">
+        CoreFinancia
+    </span>
+
+    {% if ESTADO_SISTEMA %}
+        <!-- Estado del sistema -->
+        <span style="
+            font-size:12px;
+            padding:2px 8px;
+            border-radius:12px;
+            font-weight:600;
+            color:#ffffff;
+            background-color:
+                {% if ESTADO_SISTEMA == 'ABIERTO' %}
+                    #2ecc71
+                {% else %}
+                    #e74c3c
+                {% endif %}
+            ;
+        ">
+            {{ ESTADO_SISTEMA }}
+        </span>
+    {% endif %}
+
+    {% if FECHA_PROCESO_ACTUAL %}
+        <!-- Fecha de proceso -->
+        <span style="
+            font-size:13px;
+            color:#A9F5C8;
+            font-weight:500;
+        ">
+            | Fecha de Proceso:
+            {{ FECHA_PROCESO_ACTUAL|date:"Y-m-d" }}
+        </span>
+    {% endif %}
+
+</h1>
+{% endblock %}

@@ -1,11 +1,79 @@
-#--------------------------------------------------------------
-# Create your views here.
-# En views.py de tu app
-from django.shortcuts import render, redirect
+# ======================================================
+# 1. Django Core
+# ======================================================
+from django.shortcuts import render, redirect, get_object_or_404
+from django.http import HttpResponse, JsonResponse
+from django.db import transaction
+from django.db.models import Sum, Count, Q, Max
+from django.utils import timezone
+from django.template.loader import render_to_string
+
+# ======================================================
+# 2. Autenticación y permisos
+# ======================================================
 from django.contrib.auth import authenticate, login, logout
-from django.contrib import messages
-from django.http import HttpRequest
+from django.contrib.auth.decorators import permission_required, user_passes_test
+from django.contrib import messages, admin
+
+# ======================================================
+# 3. Decoradores de Django Admin
+# ======================================================
 from django.contrib.admin.views.decorators import staff_member_required
+
+# ======================================================
+# 4. Librerías estándar de Python
+# ======================================================
+import csv
+import io
+import os
+from decimal import Decimal
+from collections import defaultdict
+
+# ======================================================
+# 5. Librerías de terceros
+# ======================================================
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+from weasyprint import HTML
+
+# ======================================================
+# 6. Modelos locales
+# ======================================================
+from .models import (
+    Bitacora,
+    Clientes,
+    Comentarios,
+    Comentarios_Prestamos,
+    ComprobantePago,
+    Desembolsos,
+    Fechas_Sistema,
+    Historia_Prestamos,
+    InBox_PagosDetalle,
+    Pagos,
+    Prestamos,
+    Conceptos_Transacciones,
+)
+
+# ======================================================
+# 7. Formularios locales
+# ======================================================
+from .forms import (
+    BalanceOperacionesForm,
+    FragmentacionForm,
+    PrestamosVencidosForm,
+    RegularizarPagoForm,
+    ReversionDesembolsoMotivoForm,
+)
+
+# ======================================================
+# 8. Utilidades locales
+# ======================================================
+from .utils import (
+    aplicar_pago,
+    calcular_totales_aplicados,
+    revertir_desembolso,
+)
 
 def login_view(request: HttpRequest):
     if request.method == 'POST':
@@ -29,14 +97,6 @@ def home_view(request):
     return render(request, 'home.html', {'usuario': request.user})
 
 
-#2025/11/17 para ventana emergente a comentarios
-# appfinancia/views.py
-from django.http import JsonResponse
-from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.decorators import permission_required, user_passes_test
-from .models import Desembolsos, Comentarios_Prestamos, Comentarios
-from django.http import HttpResponse
 
 ###@csrf_exempt <-- suspedido 2025-11-17
 @user_passes_test(lambda u: u.is_staff)
@@ -84,17 +144,7 @@ def add_comentario_prestamo(request, prestamo_id):
     #2025-11-18 - vista personalizada para plan pagos
     # appfinancia/views.py
 # En appfinancia/views.py
-from django.shortcuts import render, get_object_or_404
-from django.contrib.admin.views.decorators import staff_member_required
-from .models import Prestamos, Historia_Prestamos, Desembolsos
-from collections import defaultdict
 
-# appfinancia/views.py
-
-from django.contrib.admin.views.decorators import staff_member_required
-from django.shortcuts import get_object_or_404, render
-from django.db.models import Max
-from .models import Prestamos, Historia_Prestamos, Conceptos_Transacciones
 
 
 @staff_member_required
@@ -200,11 +250,6 @@ def plan_de_pagos_view(request, prestamo_id):
 #__________________________________________________________________________________________________________________________
 # appfinancia/views.py
 
-from django.http import HttpResponse
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from decimal import Decimal
-from .models import Prestamos, Historia_Prestamos, Conceptos_Transacciones
 
 
 @staff_member_required
@@ -354,13 +399,7 @@ def exportar_historia_xlsx(request, prestamo_id):
 ######################################
 #Fragmentación de pagos
 ######################################
-# appfinancia/views.py (añadir al final)
-from django.shortcuts import render, get_object_or_404, redirect
-from django.contrib import messages
-from django.db import transaction
-from decimal import Decimal
-from .forms import FragmentacionForm
-from .models import InBox_PagosDetalle
+
 
 def fragmentar_pago(request, pago_id):
     """
@@ -368,9 +407,9 @@ def fragmentar_pago(request, pago_id):
     """
     pago = get_object_or_404(InBox_PagosDetalle, pago_id=pago_id)
 
-    # Opcional: exigir que esté en estado A_FRAMENTAR
-    if pago.estado_fragmentacion != "A_FRAMENTAR":
-        messages.warning(request, "El pago seleccionado no está marcado como 'A_FRAMENTAR'. Procediendo de todas formas.")
+    # Opcional: exigir que esté en estado A_FRAGMENTAR
+    if pago.estado_fragmentacion != "A_FRAGMENTAR":
+        messages.warning(request, "El pago seleccionado no está marcado como 'A_FRAGMENTAR'. Procediendo de todas formas.")
 
     if request.method == "POST":
         form = FragmentacionForm(request.POST, pago_padre=pago)
@@ -453,15 +492,9 @@ def fragmentar_pago(request, pago_id):
 #====================
 #Regularizar pagps
 #====================
-from django.shortcuts import get_object_or_404, render, redirect
-from django.contrib import messages
-from django.contrib.admin.views.decorators import staff_member_required
-
-from .models import InBox_PagosDetalle
-from .forms import RegularizarPagoForm
 
 
-@staff_member_required
+""" @staff_member_required
 def regularizar_pago_view(request, pago_id):
     pago = get_object_or_404(InBox_PagosDetalle, pago_id=pago_id)
 
@@ -482,33 +515,13 @@ def regularizar_pago_view(request, pago_id):
         "form": form,
     }
 
-    return render(request, "appfinancia/regularizar_pago.html", context)
+    return render(request, "appfinancia/regularizar_pago.html", context) """
 
 
 #-------------------------------------para el estado de cuenta -------------------
 # appfinancia/views.py
 
-from django.shortcuts import get_object_or_404
-from django.http import HttpResponse
-from django.template.loader import render_to_string
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill
-from decimal import Decimal
-import io
 
-from .models import Prestamos, Fechas_Sistema, Historia_Prestamos, Conceptos_Transacciones
-
-
-
-#------------------------ estado de cuenta ---------------------
-from django.shortcuts import render, get_object_or_404
-from django.http import HttpResponse
-from .models import Prestamos, Fechas_Sistema
-from decimal import Decimal
-from openpyxl import Workbook
-from openpyxl.styles import Font
-from openpyxl.utils import get_column_letter
-import io
 
 def formato_numero(valor):
     """Formatea un número como string: 25487.4 → '25,487.40'"""
@@ -688,18 +701,7 @@ def generar_excel_estado_cuenta(context):
     response['Content-Disposition'] = f'attachment; filename=EstadoCuenta_{context["prestamo_id_num"]}.xlsx'
     return response
 
-#----------------------------------------------------------
-
-
-from django.shortcuts import render
-from django.http import HttpResponse
-from django.contrib import messages
-from django.contrib import admin  # ← ¡Importante para site_title y site_header!
-from django.contrib.auth.decorators import permission_required
-import csv
-from io import StringIO
-#from .forms import ConsultaCausacionForm
-#from .utils import total_intereses_por_periodo
+#__________________________________________________________________________
 
 
 @permission_required('appfinancia.puede_consultar_causacion', raise_exception=True)
@@ -806,10 +808,6 @@ def consulta_causacion_view(request):
     
 
 #-------------------------- Balance de Operaciones ----------
-from .forms import BalanceOperacionesForm  # ← Agrega este import al inicio del archivo
-from decimal import Decimal
-from django.db.models import Sum, Count, Q
-from .models import Prestamos, Desembolsos, Pagos, Historia_Prestamos, Clientes
 
 
 def safe_excel_text(text):
@@ -1038,11 +1036,7 @@ def balance_operaciones_view(request):
 #--------------------------------
 # views.py — APrestamos vencidos 
 # -------------------------- Reporte de Préstamos Vencidos --------------------------
-from .forms import PrestamosVencidosForm
-from .models import Prestamos, Clientes, Historia_Prestamos, Fechas_Sistema
-from decimal import Decimal
-from collections import defaultdict
-from django.utils import timezone
+
 
 
 def formatear_monto_pantalla(valor):
@@ -1210,17 +1204,8 @@ def prestamos_vencidos_view(request):
         context = get_context(form)
         return render(request, 'admin/prestamos_vencidos.html', context)
 
-
  
 #-------------------- vistas para previsualizar aplicacion pagos y confirmar -----------
-from django.shortcuts import render, get_object_or_404, redirect
-from django.contrib import messages
-from django.contrib.admin.views.decorators import staff_member_required
-from decimal import Decimal
-from collections import defaultdict
-from .utils import aplicar_pago  # ✅ Ya no usamos simular_aplicacion_pago
-from .models import Pagos, Prestamos
-import os
 
 # views.py
 @staff_member_required
@@ -1301,16 +1286,6 @@ def previsualizar_aplicacion_pago(request, pago_id):
 #___________________________________________________
 # views.py
 # views.py
-from django.utils import timezone
-from django.shortcuts import get_object_or_404, redirect
-from django.contrib import messages
-from django.contrib.admin.views.decorators import staff_member_required
-from django.db import transaction
-from decimal import Decimal
-from collections import defaultdict
-from .models import Pagos, ComprobantePago, Bitacora  # ← Asegúrate de importar Bitacora
-from .utils import aplicar_pago
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -1469,8 +1444,7 @@ def confirmar_aplicacion_pago(request, pago_id):
         return redirect('admin:appfinancia_pagos_change', object_id=pago_id)
     
 #------------------------
-from django.db.models import Q
-from .models import ComprobantePago  # asegúrate de importarlo
+
 @staff_member_required
 def buscar_comprobante_view(request):
     """
@@ -1580,9 +1554,7 @@ def ver_comprobante_pago(request, pago_id):
 
 #_______________________________________________________
 
-from django.template.loader import render_to_string
-from weasyprint import HTML
-from .utils import calcular_totales_aplicados # Asegúrate de que esté disponible
+
 
 @staff_member_required
 def exportar_comprobante_pdf(request, pago_id):
@@ -1656,11 +1628,6 @@ def exportar_comprobante_excel(request, pago_id):
     return response
 #_____________________________________________________________________________________
 
-from django.db import transaction
-from django.contrib import messages
-from django.shortcuts import get_object_or_404, redirect
-from django.utils import timezone
-from .models import Desembolsos, Bitacora
 
 def ejecutar_desembolso_view(request, object_id):
     # 🔑 Importaciones locales para mantener consistencia con tu lógica original
@@ -1793,12 +1760,7 @@ def validar_desembolso(desembolso):
 
     return True
 #__________________________________________________________________________________________________
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib import messages
-from .models import Desembolsos
-from .forms import ReversionDesembolsoMotivoForm
-from .utils import revertir_desembolso
-from django.contrib.auth.decorators import permission_required
+
 
 @permission_required('appfinancia.can_revert_desembolso', raise_exception=True)
 def revertir_desembolso_confirm_view(request, object_id):
@@ -1826,6 +1788,5 @@ def revertir_desembolso_confirm_view(request, object_id):
     }
     # Apuntamos al nuevo nombre de template
     return render(request, 'appfinancia/revertir_desembolso.html', context)
-#_______________________________________________________________________________________________
-
+#_______________________________________________________________________________________________/*
 
