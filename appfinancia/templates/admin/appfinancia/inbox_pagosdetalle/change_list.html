@@ -1,0 +1,11 @@
+{% extends "admin/change_list.html" %}
+
+{% block object-tools %}
+{{ block.super }}
+<li>
+    <a href="reporte-conciliacion/?{{ request.GET.urlencode }}"
+       class="button">
+        📊 Reporte de Conciliación
+    </a>
+</li>
+{% endblock %}

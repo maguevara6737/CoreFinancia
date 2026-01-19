@@ -11,27 +11,27 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name='extractobancariomovimientos',
-            name='nombre_archivo',
-        ),
-        migrations.RemoveField(
-            model_name='extractobancariomovimientos',
-            name='cliente_id_real',
-        ),
-        migrations.RemoveField(
-            model_name='extractobancariomovimientos',
-            name='prestamo_id_real',
-        ),
+        #migrations.RemoveField(
+        #    model_name='extractobancariomovimientos',
+        #    name='nombre_archivo',
+        #),
+        #migrations.RemoveField(
+        #    model_name='extractobancariomovimientos',
+        #    name='cliente_id_real',
+        #),
+        #migrations.RemoveField(
+        #    model_name='extractobancariomovimientos',
+         #   name='prestamo_id_real',
+        #),
         migrations.AlterField(
             model_name='clientes',
             name='tipo_id',
             field=models.ForeignKey(help_text='Tipo de identificación (ej. CC, TI, CE, PA, NIT).', on_delete=django.db.models.deletion.PROTECT, to='appfinancia.tipos_identificacion'),
         ),
-        migrations.DeleteModel(
-            name='ExtractoBancario',
-        ),
-        migrations.DeleteModel(
-            name='ExtractoBancarioMovimientos',
-        ),
+        #migrations.DeleteModel(
+        #    name='ExtractoBancario',
+        #),
+        #migrations.DeleteModel(
+        #    name='ExtractoBancarioMovimientos',
+        #),
     ]

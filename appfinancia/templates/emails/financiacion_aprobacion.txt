@@ -1,0 +1,18 @@
+
+¡Nos alegra darle la bienvenida a Financia Seguro!
+
+Estimado (a) {Financiacion.nombre_completo},
+
+Agradecemos haber confiado en nosotros para gestionar la financiación de su póliza de seguro.
+
+A continuación, le proporcionamos los documentos e información necesarios para completar el proceso de financiación:
+
+- **Proyección de Pagos**: En este documento encontrará el detalle de su obligación financiera. Esta proyección es solo una referencia y puede variar si los pagos se realizan en fechas diferentes a las estipuladas. En caso de mora, se generarán intereses adicionales los cuales serán cobrados en la cuota final del crédito.
+
+- **Carta de Autorización de Tratamiento de Datos Personales**: Este documento es esencial para cumplir con los requisitos legales relacionados con el manejo de sus datos personales durante el proceso de financiación.
+
+Para iniciar el proceso de financiación, le solicitamos realizar el pago de la primera cuota, por valor de $ {Financiacion.valor_cuota_inicial}. Este pago puede efectuarse a través de nuestra página web, escaneando nuestro código QR, por llave Bre-B o a través del link de pago que encuentra en la parte inferior. Tenga en cuenta que al realizar este pago usted estará aceptando las condiciones del crédito.
+
+Si necesita asistencia con el pago o con la firma digital de los documentos, puede contactarnos a través de nuestro canal de WhatsApp **+57 316 241 1394**, donde le brindaremos el soporte necesario.
+
+Saludos cordiales,

@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
             name='nombre_archivo_id',
             field=models.CharField(blank=True, max_length=20),
         ),
-        migrations.DeleteModel(
-            name='Pagos_Archivos',
-        ),
+        #migrations.DeleteModel(
+        #    name='Pagos_Archivos',
+        #),
     ]

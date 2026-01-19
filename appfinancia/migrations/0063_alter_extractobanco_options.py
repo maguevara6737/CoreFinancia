@@ -10,8 +10,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AlterModelOptions(
-            name='extractobanco',
-            options={'ordering': ['-fecha'], 'verbose_name': 'Cargar Extracto Bancolombia', 'verbose_name_plural': 'Cargar Extracto Bancolombia'},
-        ),
+        #migrations.AlterModelOptions(
+        #    name='extractobanco',
+        #    options={'ordering': ['-fecha'], 'verbose_name': 'Cargar Extracto Bancolombia', 'verbose_name_plural': 'Cargar Extracto Bancolombia'},
+        #),
     ]

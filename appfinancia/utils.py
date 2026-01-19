@@ -1,14 +1,66 @@
-# utils.py
-# archivo 'utils.py' (MANTENER solo esto al inicio) 
-#incluido el 2025/11/29 par solucionar las referencias circulares. (pam)
+# ======================================================
+# 1. Imports de compatibilidad futura (DEBEN ir primero)
+# ======================================================
 from __future__ import annotations
 
+# ======================================================
+# 2. Librerías estándar de Python
+# ======================================================
+import io
+import os
+import re
+from typing import Literal, Optional
+from datetime import date, datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP, getcontext
 
+# ======================================================
+# 3. Librerías de terceros (Instaladas vía pip)
+# ======================================================
+import pdfplumber
+from openpyxl import Workbook
+from typing import Literal, Union
+from openpyxl.cell.cell import MergedCell
+from dateutil.relativedelta import relativedelta
+from openpyxl.styles import Alignment, Font, PatternFill
+
+
+# ======================================================
+# 4. Django Core
+# ======================================================
+from django.conf import settings
+from django.db.models import Sum
+from django.utils import timezone
 from django.core.cache import cache
 from django.db import models, transaction
-from django.db.models import Sum
+from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ValidationError
+
+# ======================================================
+# 5. Constantes Globales
+# ======================================================
 CACHE_TIMEOUT = 3600  # 1 hora
 
+# ======================================================
+# 6. Importaciones Locales (Modelos)
+# Se recomienda agruparlos para evitar redundancia y facilitar el mantenimiento
+# ======================================================
+from .models import (
+    Clientes,
+    Conceptos_Transacciones,
+    Desembolsos,
+    Detalle_Aplicacion_Pago,
+    Fechas_Sistema,
+    Historia_Prestamos,
+    Prestamos
+)
+
+# ======================================================
+# 7. Configuración opcional de precisión decimal si tu sistema lo requiere
+# ======================================================
+getcontext().prec = 28
+ROUND = ROUND_HALF_UP
+
+#-----------------------------------------------------------------------------------------
 #Obtener las Políticas de crédito
 def get_politicas():
     from .models import Politicas
@@ -31,31 +83,7 @@ def get_politicas():
     
     return politicas
     
-#Obtener el numerador de préstamos    
-#def get_next_prestamo_id():
-#    from .models import Numeradores
-#    """
-#    Obtiene el siguiente ID para préstamo de forma atómica y segura.
-#    """
-#    with transaction.atomic():
-#        # Bloquea la fila para evitar concurrencia
-#        numerador = Numeradores.objects.select_for_update().first()
-#        if numerador is None:
-#            # Crea la fila si no existe (solo debería pasar una vez)
-#            numerador = Numeradores.objects.create(numerador_prestamo=1000)
-#        else:
-#            numerador.numerador_prestamo += 1
-#            numerador.save(update_fields=['numerador_prestamo'])
-#        return numerador.numerador_prestamo
-        
-
-# utils.py
-#from django.db import transaction
-#from django.core.cache import cache
-#from .models import Numeradores
-
-#CACHE_TIMEOUT = 3600  # 1 hora
-
+#-----------------------------------------------------------------------------------------
 def _increment_field(field_name: str) -> int:
     from .models import Numeradores
     """
@@ -79,7 +107,8 @@ def _increment_field(field_name: str) -> int:
 
         return new_value
 
-# === FUNCIONES PÚBLICAS (exactamente como solicitaste) ===
+#-----------------------------------------------------------------------------------------
+#Funciones públicas:
 
 def get_next_asientos_id() -> int:
     """Obtiene el siguiente ID para asientos contables."""
@@ -121,21 +150,7 @@ def get_next_secuencial_5_id() -> int:
     """Obtiene el siguiente ID del contador auxiliar 5."""
     return _increment_field('numerador_aux_5')
 
-#===========================   DESEMBOLSO BACKEND ==================================
-# appfinancia/utils.py
-from decimal import Decimal, getcontext, ROUND_HALF_UP
-from datetime import datetime, timedelta, date
-from dateutil.relativedelta import relativedelta
-from django.db import transaction
-from django.utils import timezone
-from django.core.exceptions import ObjectDoesNotExist
-from django.conf import settings
-
-# Ajuste de precisión decimal para cálculos financieros
-getcontext().prec = 28
-ROUND = ROUND_HALF_UP
-
-
+#-----------------------------------------------------------------------------------------
 
 def obtener_user_name_from_django_user(user_obj):
     """
@@ -146,11 +161,7 @@ def obtener_user_name_from_django_user(user_obj):
     except Exception:
         return str(user_obj)
 
-
-
-#---------------------- desembolso func
-from datetime import date
-
+#-----------------------------------------------------------------------------------------
 
 def create_prestamo(desembolso):
     
@@ -185,8 +196,6 @@ def create_prestamo(desembolso):
     )
     return prestamo
 
-
-
 def create_movimiento(desembolso):
     from .models import Desembolsos, Movimientos 
     """
@@ -199,12 +208,8 @@ def create_movimiento(desembolso):
         fecha_valor_mvto=desembolso.fecha_desembolso,
     )
     return movimiento
-#----------------------------------------
-from decimal import Decimal, ROUND_HALF_UP
-from dateutil.relativedelta import relativedelta
-from django.utils import timezone
 
-
+#-----------------------------------------------------------------------------------------
 def create_loan_payments(prestamo, desembolso, plan_pagos, user_name):
     """
     Guarda el plan de pagos generado por calculate_loan_schedule
@@ -316,15 +321,7 @@ def create_loan_payments(prestamo, desembolso, plan_pagos, user_name):
 
     return created_count
 	
-
-from decimal import Decimal, ROUND_HALF_UP
-from dateutil.relativedelta import relativedelta
-from datetime import date
-
-#----------------------------------------
-from decimal import Decimal, ROUND_HALF_UP
-from dateutil.relativedelta import relativedelta
-
+#-----------------------------------------------------------------------------------------
 def calculate_loan_schedule(desembolso):
     """
     Calculates the loan payment schedule based on the Desembolso object.
@@ -414,15 +411,15 @@ def calculate_loan_schedule(desembolso):
             saldo = Decimal('0.00')
 
     return results
-#-----------
+    
+#-----------------------------------------------------------------------------------------
 #2025-11-25 6:52am traslado funcion pasar_a_desembolsado a utils.py
 """ def pasar_a_desembolsado(self, request, queryset):
     updated = queryset.filter(estado='A_DESEMBOLSAR').update(estado='DESEMBOLSADO')
     self.message_user(request, f"{updated} desembolso(s) pasado(s) a DESEMBOLSADO.")
 pasar_a_desembolsado.short_description = "Pasar a DESEMBOLSADO" 
  """
-
-#----------------------------------------------------------------2025/11/26
+#-----------------------------------------------------------------------------------------
 class FechasSistemaHelper:  
     """
     Helper para acceder de forma segura y eficiente a la configuración global de fechas del sistema.
@@ -482,18 +479,7 @@ class FechasSistemaHelper:
             'modo_fecha_sistema': fs.modo_fecha_sistema,
         }
 
-#Fin Fechas del Sistema
-
-
-#=========================================================================================
-# InBox Pagos
-#=========================================================================================
-import io
-import re
-import pdfplumber
-from django.utils import timezone
-from typing import Literal
-import os   # ← IMPORTANTE: evita el NameError
+#-----------------------------------------------------------------------------------------
 
 def InBox_Pagos(archivo_pagos, usuario, cabezal):
     #identificar automáticamente el formato del archvo
@@ -522,10 +508,7 @@ def InBox_Pagos(archivo_pagos, usuario, cabezal):
     else:
         return False, "Formato desconocido."
 
-
-#=========================================================================================
-#leer extracto de Bancolombia
-#=========================================================================================
+#-----------------------------------------------------------------------------------------
 def inbox_formato_bancolombia(pdf_file, nombre_archivo_id, user, cabezal):
     from .models import InBox_PagosDetalle
     cargados = 0
@@ -560,6 +543,8 @@ def inbox_formato_bancolombia(pdf_file, nombre_archivo_id, user, cabezal):
                 valor_raw = clean_money(reg)
                 clase_movimiento_raw=clase_movimiento(descripcion_raw,Decimal(valor_raw)) 
                 
+                estado_conciliacion_raw = f_estado_conciliacion(clase_movimiento_raw)
+                
                 InBox_PagosDetalle.objects.create(
                     nombre_archivo_id_id=nombre_archivo_id,
                     banco_origen='BANCOLOMBIA',            
@@ -579,15 +564,18 @@ def inbox_formato_bancolombia(pdf_file, nombre_archivo_id, user, cabezal):
                     #cliente_id_real=None, 
                     #prestamo_id_real=None,
                     #poliza_id_real=None,
-                    estado_conciliacion=f_estado_conciliacion(clase_movimiento_raw),
+                    estado_conciliacion=estado_conciliacion_raw,
+                    #lote_pse = lote_pse_raw
+                    #fecha_conciliacion = fecha_conciliacion_raw
+                    
                     clase_movimiento=clase_movimiento_raw, 
                     estado_fragmentacion="NO_REQUIERE",
                     valor_pago=Decimal(valor_raw),
                     creado_por=user,
                 )
-
-                cargados += 1
-                valor_total += float(valor_raw)
+                if clase_movimiento_raw != "EXCLUIDO":
+                    cargados += 1
+                    valor_total += float(valor_raw)
 
             except Exception:
                 rechazados += 1
@@ -603,11 +591,7 @@ def inbox_formato_bancolombia(pdf_file, nombre_archivo_id, user, cabezal):
 
     return True, f"{cargados} registros cargados, {rechazados} rechazados."
 
-
-
-# ===========================================================
-#  FORMATO 1: PSE
-# ===========================================================
+#-----------------------------------------------------------------------------------------
 def inbox_formato_pse(xls_file, nombre_archivo_id, user, cabezal):
     import pandas as pd
     from decimal import Decimal
@@ -639,7 +623,6 @@ def inbox_formato_pse(xls_file, nombre_archivo_id, user, cabezal):
         "Cédula"
     ]
 
-    
     for c in columnas:
         if c not in df.columns:
             return False, f"Columna faltante en archivo PSE: {c}"
@@ -714,7 +697,6 @@ def inbox_formato_pse(xls_file, nombre_archivo_id, user, cabezal):
         cabezal.save()
 
     return True, f"Archivo procesado: {cargados} registros cargados, {rechazados} rechazados."
-
 #-----------------------------
 
 def safe(txt, maxlen):
@@ -742,7 +724,6 @@ def clean_money(valor_str):
         # Maneja la excepción si la cadena limpia todavía no es un número válido.
         # print(f"Error de conversión en clean_money: {e} para cadena limpia '{limpio}'")
         return None
-
 
 #================
 #Limpiar descripción
@@ -786,27 +767,19 @@ def f_estado_pago(tipo_mov: str) -> Literal['EXCLUIDO', 'RECIBIDO']:
 #Estado conciliación
 #===================
         
-from typing import Literal, Union
-
 def f_estado_conciliacion(p_clas_mov: str) -> Union[str, Literal['NO', 'SI']]:
     clasificacion = p_clas_mov.upper() if p_clas_mov else ""
-    if clasificacion == 'ABONO_PSE' or clasificacion == 'PAGO_PSE':
+    if clasificacion == 'LOTE_PSE' or clasificacion == 'PAGO_PSE':
         return 'NO'
     elif clasificacion == 'PAGO_BANCOL':
         return 'SI'
     # 3. Caso por defecto
     else:
         return ""
+        
+#-----------------------------------------------------------------------------------------
+# Proceso cambiar estados
 
-# ============================================================
-# PROCESOS DE ESTADO
-# ============================================================
-
-from django.db import transaction
-
-#===============
-# ANULAR ARCHIVO
-# ==============
 def f_anular_archivo(cabezal: InBox_PagosCabezal, usuario):
     from .models import InBox_PagosCabezal, InBox_PagosDetalle
     try:
@@ -836,10 +809,7 @@ def f_anular_archivo(cabezal: InBox_PagosCabezal, usuario):
     except Exception as e:
         return False, f"Error al anular archivo: {str(e)}"
 
-
-# ================
-# PROCESAR ARCHIVO
-# ================
+#-----------------------------------------------------------------------------------------
 def f_procesar_archivo(cabezal: InBox_PagosCabezal, usuario):
     from .models import InBox_PagosCabezal, InBox_PagosDetalle
     try:
@@ -869,9 +839,7 @@ def f_procesar_archivo(cabezal: InBox_PagosCabezal, usuario):
     except Exception as e:
         return False, f"Error al envio a proceso archivo: {str(e)}"
 
-#===============================
-#Identificar formato del archivo
-#===============================
+#-----------------------------------------------------------------------------------------
 def f_identificar_formato(nombre_archivo: str) -> Literal['1-FORMATO PSE', '3-FORMATO EXTRACTO BANCOLOMBIA', 'Error: Formato no soportado']:
     _, extension = os.path.splitext(nombre_archivo)
     
@@ -889,13 +857,7 @@ def f_identificar_formato(nombre_archivo: str) -> Literal['1-FORMATO PSE', '3-FO
     else:
         return f'Error: La extensión "{extension}" no es válida. Tipos soportados: .xlsx, .pdf'
 
-
-# ============================================================
-# Obtener la clase de movimiento. aplica para el Extracto Bancolombia
-# ============================================================
-from decimal import Decimal
-from typing import Optional # Para clarificar que el valor puede ser un Decimal o None
-
+#-----------------------------------------------------------------------------------------
 def clase_movimiento(reg: str, valor: Optional[Decimal]) -> str:
     
     # 1.Si el valor no existe (es None) o es negativo.
@@ -905,7 +867,7 @@ def clase_movimiento(reg: str, valor: Optional[Decimal]) -> str:
     
     # a) PAGO VIRTUAL PSE
     if "PAGO VIRTUAL PSE" in reg:
-        return "ABONO_PSE"
+        return "LOTE_PSE"
 
     # b) ABONO INTERESES AHORROS
     elif "ABONO INTERESES AHORROS" in reg:
@@ -920,12 +882,7 @@ def clase_movimiento(reg: str, valor: Optional[Decimal]) -> str:
     # Si pasa todas las comprobaciones anteriores, se asigna la clasificación por defecto.
     return "PAGO_BANCOL"
     
-#Fin cargar archivos InBox----------------------------------------------------------------
-
-#---------------------------------------------------------------------------------------
-#FUNCIÓN: Cerrar período de interés para calculo y causacion
-# utils.py
-# utils.py
+#-----------------------------------------------------------------------------------------
 
 def cerrar_periodo_interes(prestamo_id: int, fecha_corte: date, pago_referencia=None, numero_asiento_contable=None,  capital_aplicado=0):
     """
@@ -1126,8 +1083,6 @@ def obtener_tasa_prestamo(prestamo_id):
 #tasa = obtener_tasa_prestamo(38)  # préstamo ID 38
 #print(tasa)  # Ej: Decimal('0.2500') si la tasa es 25%
 #------------------------------------------------------------------------
-
-# utils.py
 # utils.py - Actualiza SOLO las funciones de consulta
 
 def obtener_intereses_causados_a_fecha(prestamo_id, fecha_corte):
@@ -1147,13 +1102,7 @@ def obtener_intereses_causados_a_fecha(prestamo_id, fecha_corte):
     
     return ultimo_registro.intrs_ctes if ultimo_registro else Decimal('0.00')
 
-#_____________________________________________
-# utils.py
-from decimal import Decimal, ROUND_HALF_UP
-from datetime import timedelta, date
-from django.db.models import Sum
-from .models import Historia_Prestamos, Conceptos_Transacciones, Prestamos, Fechas_Sistema
-
+#-----------------------------------------------------------------------------------------
 
 def total_intereses_por_periodo(fecha_inicio, fecha_fin):
     """
@@ -1319,8 +1268,7 @@ def total_intereses_por_periodo(fecha_inicio, fecha_fin):
         'detalle_por_prestamo': detalle_por_prestamo
     }
 
-#___________________________________________________________________________
-#------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
 def aplicar_pago_cuota_inicial(desembolso, prestamo, usuario: str,  numero_asiento_contable=None):
     """
     Aplica el pago de la cuota #1 dentro del contexto de procesar_desembolsos_pendientes.
@@ -1368,7 +1316,6 @@ def aplicar_pago_cuota_inicial(desembolso, prestamo, usuario: str,  numero_asien
         raise ValueError(f"El pago de cuota inicial {pago_id} ya fue aplicado.")
 
     # Obtener fecha de proceso del sistema
-    # Obtener fecha de proceso del sistema
     fechas_sistema = Fechas_Sistema.objects.first()
     if not fechas_sistema:
         raise ValueError("No se encontró ningún registro en Fechas_Sistema. Cree uno primero.")
@@ -1378,7 +1325,6 @@ def aplicar_pago_cuota_inicial(desembolso, prestamo, usuario: str,  numero_asien
     prestamo_id = pago.prestamo_id_real
     #monto_restante = valor_pago
     monto_restante = Decimal(str(pago.valor_pago)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-
 
     # Conceptos
     concepto_cap = Conceptos_Transacciones.objects.get(concepto_id="PLANCAP")
@@ -1400,7 +1346,6 @@ def aplicar_pago_cuota_inicial(desembolso, prestamo, usuario: str,  numero_asien
         key=lambda r: (r.fecha_vencimiento, r.numero_cuota, prioridad.get(r.concepto_id_id, 99))
     )
 
-
     # Número de operación único
     ultimo_numero = Historia_Prestamos.objects.filter(
         prestamo_id=prestamo_id,
@@ -1411,7 +1356,6 @@ def aplicar_pago_cuota_inicial(desembolso, prestamo, usuario: str,  numero_asien
 
     # Acumulador específico para CAPITAL aplicado (solo PLANCAP)
     total_capital_aplicado = Decimal('0.00')
-
 
     # Aplicar pago a cada componente
     registros_creados = []
@@ -1448,7 +1392,6 @@ def aplicar_pago_cuota_inicial(desembolso, prestamo, usuario: str,  numero_asien
         reg.numero_operacion = numero_siguiente
         reg.numero_asiento_contable = numero_asiento_contable
         reg.save()
-
 
         Detalle_Aplicacion_Pago.objects.create(
             pago=pago,
@@ -1488,7 +1431,6 @@ def aplicar_pago_cuota_inicial(desembolso, prestamo, usuario: str,  numero_asien
             monto_restante -= monto_aplicar
             total_capital_aplicado += monto_aplicar  # ✅ ¡Incluir excedente aplicado a capital!
 
-			 
         if monto_restante > 0:					  
             hist_excedente = Historia_Prestamos.objects.create(
                 prestamo_id=prestamo_id,
@@ -1524,7 +1466,6 @@ def aplicar_pago_cuota_inicial(desembolso, prestamo, usuario: str,  numero_asien
         capital_aplicado=total_capital_aplicado  # ✅ PASAR EL TOTAL ACUMULADO
     )
 
-
     # Finalizar pago
     pago.estado_pago = 'aplicado'
     pago.fecha_aplicacion_pago = timezone.now()
@@ -1538,9 +1479,7 @@ def aplicar_pago_cuota_inicial(desembolso, prestamo, usuario: str,  numero_asien
         'excedente': float(monto_restante),
     }
 
-
- #------------------------------------------------------------------------
-# utils.py
+#-----------------------------------------------------------------------------------------
 
 def aplicar_pago(pago_id, usuario, asiento=None):
     """
@@ -1800,16 +1739,8 @@ def aplicar_pago(pago_id, usuario, asiento=None):
         'excedente': float(monto_restante),
         'ajuste_id': ajuste_id
     } 
-#--------------- Fin aplicar pago ------------
-
-#
-
-#----------------------------------------------------------------2025/11/26
-# appfinancia/utils.py
-#from .models import Fechas_Sistema
-from django.utils import timezone
-from datetime import date
-
+    
+#-----------------------------------------------------------------------------------------
 def get_fecha_proceso_actual() -> date:
     """Devuelve la fecha de proceso actual (singleton seguro)"""
     from .models import Fechas_Sistema
@@ -1844,20 +1775,7 @@ if sistema_esta_abierto():
     
 
 #------------ ***   para el Historial del prestamo a xls ******
-# appfinancia/utils.py
-
 # --- utils.py (AJUSTADO SIN MERGE) ---
-import io
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment
-from openpyxl.cell.cell import MergedCell 
-from decimal import Decimal
-from django.db.models import Sum # Necesario para la agregación
-from .models import (
-    Historia_Prestamos, Detalle_Aplicacion_Pago, Fechas_Sistema, 
-    Desembolsos, Prestamos, Clientes
-)
-
 def generar_reporte_excel_en_memoria(prestamo_id):
     """
     Genera un reporte Excel del historial de un préstamo y devuelve un BytesIO buffer.
@@ -2109,8 +2027,8 @@ def cerrar_periodo_interes_migracion(prestamo_id: int, fecha_corte: date, pago_r
         numero_operacion=numero_asiento_contable,
         capital_aplicado_periodo=capital_aplicado or 0,
         numero_pago_referencia=pago_referencia or "",
-        numero_asiento_contable=numero_asiento_contable or 0
-    )
+        numero_asiento_contable=numero_asiento_contable or 0)
+        
 #------------- ini aplicar pago migra --------
 def aplicar_pago_migracion(pago_id: int, usuario: str = "sistema", asiento=None):
     """
@@ -2349,5 +2267,125 @@ def aplicar_pago_migracion(pago_id: int, usuario: str = "sistema", asiento=None)
         'excedente': float(monto_restante),
         'ajuste_id': ajuste_id
     }
-#--------------- Fin aplicar pago migracion------------
+#--------------- Fin aplicar pago migracion-----------------------------------------------
 
+def confirmar_pagos(queryset, usuario):
+    from .models import InBox_PagosDetalle, Pagos
+     
+    confirmados = 0
+    errores = []
+
+    with transaction.atomic():        
+        # Aplicamos el filtro base y encadenamos las exclusiones solicitadas
+        pagos_validos = queryset.filter(
+            estado_pago="A_PROCESAR",
+            estado_conciliacion="SI",
+        ).exclude(
+            # 1. Excluir si no tienen cliente o préstamo asignado (IDs nulos)
+            cliente_id_real__isnull=True
+        ).exclude(
+            prestamo_id_real__isnull=True
+        ).exclude(
+            # 2. Excluir si está pendiente de fragmentación
+            estado_fragmentacion="A_FRAGMENTAR"
+        ).exclude(
+            # 3. Excluir si es un movimiento tipo LOTE
+            clase_movimiento="LOTE_PSE"
+        )
+        
+        for pago in pagos_validos:
+            try:
+                Pagos.objects.create(
+                    pago_id=pago.pago_id,
+                    nombre_archivo_id=pago.nombre_archivo_id,
+                    banco_origen=pago.banco_origen,
+                    cuenta_bancaria=pago.cuenta_bancaria,
+                    tipo_cuenta_bancaria=pago.tipo_cuenta_bancaria,
+                    canal_red_pago=pago.canal_red_pago,
+                    ref_bancaria=pago.ref_bancaria,
+                    ref_red=pago.ref_red,
+                    ref_cliente_1=pago.ref_cliente_1,
+                    ref_cliente_2=pago.ref_cliente_2,
+                    ref_cliente_3=pago.ref_cliente_3,
+                    estado_transaccion_reportado=pago.estado_transaccion_reportado,
+                    cliente_id_reportado=pago.cliente_id_reportado,
+                    prestamo_id_reportado=pago.prestamo_id_reportado,
+                    poliza_id_reportado=pago.poliza_id_reportado,
+                    cliente_id_real=pago.cliente_id_real_id,
+                    prestamo_id_real=pago.prestamo_id_real_id,
+                    poliza_id_real=pago.poliza_id_real,
+                    fecha_pago=pago.fecha_pago,
+                    hora_pago="00:00:00", #pago.hora_pago,
+                    fecha_conciliacion=pago.fecha_conciliacion,
+                    estado_pago='CONCILIADO',
+                    #estado_conciliacion=pago.estado_conciliacion,
+                    valor_pago=pago.valor_pago,
+                    observaciones=pago.observaciones,
+                    creado_por=usuario,
+                    fecha_aplicacion_pago=None,      #timezone.now(),
+                )
+
+                pago.estado_pago = "CONFIRMADO"
+                pago.save(update_fields=["estado_pago"])
+
+                confirmados += 1
+
+            except Exception as e:
+                errores.append(f"Pago {pago.pago_id}: {e}")
+
+    if errores:
+        return False, f"Confirmados {confirmados}. Errores: {' | '.join(errores[:5])}"
+
+    return True, f"{confirmados} pagos confirmados correctamente"
+    
+#-----------------------------------------------------------------------------------------
+
+def validar_nit(value):
+    """
+    Valida un NIT numérico donde el último dígito es el DV (Dígito de Verificación).
+    Ejemplo: 8600000001 (donde 1 es el DV)
+    """
+    nit_str = str(value)
+    
+    if len(nit_str) < 6:
+        raise ValidationError("El NIT es demasiado corto.")
+
+    # El último dígito es el DV, el resto es el cuerpo del NIT
+    cuerpo_nit = nit_str[:-1]
+    dv_ingresado = int(nit_str[-1])
+    
+    # Pesos oficiales de la DIAN
+    pesos = [71, 67, 59, 53, 47, 43, 41, 37, 29, 23, 19, 17, 13, 7, 3]
+    
+    # Rellenar con ceros a la izquierda hasta 15 dígitos para aplicar los pesos
+    nit_completo = cuerpo_nit.zfill(15)
+    
+    suma = 0
+    for i in range(15):
+        suma += int(nit_completo[i]) * pesos[i]
+    
+    residuo = suma % 11
+    if residuo > 1:
+        dv_calculado = 11 - residuo
+    else:
+        dv_calculado = residuo
+        
+    if dv_ingresado != dv_calculado:
+        raise ValidationError(
+            f"NIT inválido. El dígito de verificación calculado para {cuerpo_nit} es {dv_calculado}, "
+            f"por lo que el número completo debería ser {cuerpo_nit}{dv_calculado}."
+        )
+
+#_______________________________________________________________________________________________________
+def calcular_dv_modulo11(numero):
+    numero_str = str(numero)
+    # Pesos estándar 2 a 7
+    pesos = [2, 3, 4, 5, 6, 7]
+    suma = 0
+    for i, digito in enumerate(reversed(numero_str)):
+        suma += int(digito) * pesos[i % len(pesos)]
+    
+    resto = suma % 11
+    dv = 11 - resto
+    if dv >= 10: return 0
+    return dv

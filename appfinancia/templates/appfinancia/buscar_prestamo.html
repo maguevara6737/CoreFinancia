@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Buscar Préstamo</title>
+    <style>
+        table { border-collapse: collapse; width: 100%; }
+        th, td { padding: 6px; border: 1px solid #ccc; }
+        th { background: #f0f0f0; }
+        tr:hover { background: #e6f2ff; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<h2>🔍 Buscar Préstamo</h2>
+
+<form method="get">
+    <input type="text" name="q" value="{{ q }}" style="width:60%"
+           placeholder="Préstamo, cliente, nombre o apellido">
+    <button type="submit">Buscar</button>
+</form>
+
+<br>
+
+<table>
+    <tr>
+        <th>Préstamo</th>
+        <th>Cliente</th>
+        <th>Nombre</th>
+        <th>Saldo actual</th>
+        <th>Monto atrasado</th>
+        <th>Fecha desembolso</th>
+        <th></th>
+    </tr>
+
+    {% for p in prestamos %}
+    <tr>
+        <td>{{ p.prestamo_id.prestamo_id }}</td>
+        <td>{{ p.cliente_id.cliente_id }}</td>
+        <td>{{ p.cliente_id.nombre }} {{ p.cliente_id.apellido }}</td>
+        <td>{{ p.saldo_pendiente_actual }}</td>
+        <td>{{ p.monto_atrasado }}</td>
+        <td>{{ p.fecha_desembolso }}</td>
+        <td>
+            <button onclick="
+                window.opener.setPrestamo(
+                    '{{ p.id }}',
+                    '{{ p.prestamo_id.prestamo_id }} - {{ p.cliente_id.nombre }} {{ p.cliente_id.apellido }}'
+                );
+                window.close();
+            ">
+                Seleccionar
+            </button>
+        </td>
+    </tr>
+    {% empty %}
+    <tr>
+        <td colspan="7">No se encontraron resultados</td>
+    </tr>
+    {% endfor %}
+</table>
+
+</body>
+</html>

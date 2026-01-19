@@ -14,38 +14,38 @@ class Migration(migrations.Migration):
             model_name='extractobancario',
             name='creado_por',
         ),
-        migrations.RemoveField(
-            model_name='extractobancariomovimientos',
-            name='nombre_archivo_id',
-        ),
-        migrations.RemoveField(
-            model_name='extractobancariomovimientos',
-            name='cliente_id_real',
-        ),
-        migrations.RemoveField(
-            model_name='extractobancariomovimientos',
-            name='prestamo_id_real',
-        ),
-        migrations.DeleteModel(
-            name='ExtractoBanco',
-        ),
-        migrations.RemoveField(
-            model_name='extractobancolombia',
-            name='usuario',
-        ),
+        #migrations.RemoveField(
+        #    model_name='extractobancariomovimientos',
+        #    name='nombre_archivo_id',
+        #),
+        #migrations.RemoveField(
+        #    model_name='extractobancariomovimientos',
+        #    name='cliente_id_real',
+        #),
+        #migrations.RemoveField(
+        #    model_name='extractobancariomovimientos',
+        #    name='prestamo_id_real',
+        #),
+        #migrations.DeleteModel(
+        #    name='ExtractoBanco',
+        #),
+        #migrations.RemoveField(
+        #    model_name='extractobancolombia',
+        #    name='usuario',
+        #),
         migrations.RemoveField(
             model_name='movimientobancolombia',
             name='extracto',
         ),
-        migrations.DeleteModel(
-            name='ExtractoBancario',
-        ),
-        migrations.DeleteModel(
-            name='ExtractoBancarioMovimientos',
-        ),
-        migrations.DeleteModel(
-            name='ExtractoBancolombia',
-        ),
+        #migrations.DeleteModel(
+        #    name='ExtractoBancario',
+        #),
+        #migrations.DeleteModel(
+        #    name='ExtractoBancarioMovimientos',
+        #),
+        #migrations.DeleteModel(
+        #    name='ExtractoBancolombia',
+        #),
         migrations.DeleteModel(
             name='MovimientoBancolombia',
         ),
