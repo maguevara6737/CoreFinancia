@@ -1,59 +1,120 @@
 <!-- appfinancia/templates/appfinancia/estado_cuenta.html -->
-
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Estado de Cuenta - {{ prestamo.prestamo_id }}</title>
+    <meta charset="utf-8">
+    <title>Estado de Cuenta - Préstamo {{ prestamo_id_num }}</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
-        h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
-        h2 { color: #2980b9; margin-top: 20px; }
-        table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; font-weight: bold; }
-        .section { margin-bottom: 20px; }
-        .download-link {
-            display: inline-block;
-            margin-top: 10px;
-            padding: 8px 12px;
-            background: #28a745;
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #ffffff;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 25px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 10px;
+            vertical-align: top;
+        }
+        th {
+            background-color: #f5f5f5;
+            text-align: left;
+        }
+        /* ✅ Ajuste de ancho de columnas: consistente en todas las tablas */
+        th:nth-child(1), td:nth-child(1) {
+            width: 70%;
+        }
+        th:nth-child(2), td:nth-child(2) {
+            width: 30%;
+            text-align: right; /* ✅ Montos alineados a la derecha */
+            font-family: 'Courier New', monospace; /* Mejor alineación numérica */
+        }
+        .total {
+            background-color: #f0f0f0;
+            font-weight: bold;
+        }
+        .actions {
+            margin-top: 25px;
+            text-align: center;
+        }
+        .actions a {
+            padding: 8px 16px;
+            background-color: #4CAF50;
             color: white;
             text-decoration: none;
             border-radius: 4px;
+            font-weight: bold;
+        }
+        .actions a:hover {
+            background-color: #45a049;
         }
     </style>
 </head>
 <body>
-    <h1>Estado de Cuenta</h1>
-    <p><strong>Prestamo ID:</strong> {{ prestamo.prestamo_id }}</p>
-    <p><strong>Cliente:</strong> {{ cliente.nombre }} {{ cliente.apellido }}</p>
-    <p><strong>Fecha de corte:</strong> {{ fecha_corte|date:"d/m/Y" }}</p>
+    <div class="header">
+        <h1>ESTADO DE CUENTA</h1>
+        <p>
+            <strong>Préstamo:</strong> {{ prestamo_id_num }}<br>
+            <strong>Cliente:</strong> {{ cliente.nombre }} {{ cliente.apellido }}<br>
+            <strong>Fecha de corte:</strong> {{ fecha_corte }}
+        </p>
+    </div>
 
     <div class="section">
-        <h2>A la fecha de corte</h2>
+        <h2>📊 DETALLE DEL PRESTAMO</h2>
         <table>
-            <tr><td>Saldo capital:</td><td>${{ saldo_capital|floatformat:2 }}</td></tr>
-            <tr><td>Saldo Intereses:</td><td>${{ saldo_intereses|floatformat:2 }}</td></tr>
-            <tr><td>Saldo Seguro de vida:</td><td>${{ saldo_seguro|floatformat:2 }}</td></tr>
-            <tr><td>Fee:</td><td>${{ fee|floatformat:2 }}</td></tr>
-            <tr><td><strong>Saldo Total:</strong></td><td><strong>${{ suma_total_corte|floatformat:2 }}</strong></td></tr>
+            <tr><th>Concepto</th><th>Monto</th></tr>
+            <tr><td>Saldo Capital</td><td>{{ saldo_capital_fmt }}</td></tr>
+            <tr><td>Intereses </td><td>{{ intereses_vencidos_fmt }}</td></tr>
+            <tr><td>Seguro </td><td>{{ seguros_vencidos_fmt }}</td></tr>
+            <tr><td>Gastos (Fee) </td><td>{{ gastos_vencidos_fmt }}</td></tr>
+            <tr class="total">
+                <td><strong>SALDO TOTAL ADEUDADO</strong></td>
+                <td><strong>{{ total_corte_fmt }}</strong></td>
+            </tr>
         </table>
     </div>
 
     <div class="section">
-        <h2>Atrasado</h2>
+        <h2>⏰ INFORMACIÓN DE MORA</h2>
+        <p>
+            <strong>Cuotas en atraso:</strong> {{ cuotas_atrasadas }}<br>
+            <strong>Días de mora:</strong> {{ dias_mora }} días
+        </p>
+    </div>
+
+    <div class="section">
+        <h2>💰 MONTO ATRASADO POR CUOTAS PENDIENTES (DETALLE)</h2>
         <table>
-            <tr><td>Cantidad de cuotas atrasadas:</td><td>{{ cantidad_cuotas_atrasadas }}</td></tr>
-            <tr><td>Días de mora:</td><td>{{ dias_mora }}</td></tr>
-            <tr><td>Monto capital atrasado:</td><td>${{ capital_atrasado|floatformat:2 }}</td></tr>
-            <tr><td>Intereses atrasados:</td><td>${{ intereses_atrasados|floatformat:2 }}</td></tr>
-            <tr><td>Seguro atrasado:</td><td>${{ seguro_atrasado|floatformat:2 }}</td></tr>
-            <tr><td>Fee atrasado:</td><td>${{ fee_atrasado|floatformat:2 }}</td></tr>
-            <tr><td><strong>Suma total valores atrasados:</strong></td><td><strong>${{ suma_total_atrasado|floatformat:2 }}</strong></td></tr>
+            <tr><th>Concepto</th><th>Monto</th></tr>
+            <tr><td>Capital de cuotas pendientes</td><td>{{ capital_cuotas_pendientes_fmt }}</td></tr>
+            <tr><td>Intereses programados vencidos</td><td>{{ intereses_programados_fmt }}</td></tr>
+            <tr><td>Intereses de mora</td><td>{{ intereses_mora_fmt }}</td></tr>
+            <tr><td>Seguros de cuotas pendientes</td><td>{{ seguros_cuotas_pendientes_fmt }}</td></tr>
+            <tr><td>Gastos (Fee) Vencidos</td><td>{{ gastos_vencidos_fmt }}</td></tr>
+            <tr class="total">
+                <td><strong>Total Monto Atrasado</strong></td>
+                <td><strong>{{ total_monto_atrasado_fmt }}</strong></td>
+            </tr>
         </table>
     </div>
 
-    <a href="{% url 'estado_cuenta_excel' prestamo_id_valor %}" class="download-link">📥 Descargar Excel</a>
+    <div class="actions">
+        <a href="{% url 'admin:appfinancia_prestamos_estado_cuenta_excel' prestamo_id_num %}" target="_blank">
+            📥 Descargar versión Excel
+        </a>
+    </div>
 </body>
 </html>

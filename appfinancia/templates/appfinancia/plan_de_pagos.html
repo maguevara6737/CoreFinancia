@@ -105,7 +105,7 @@
         </div>
         <!-- Botón de exportar -->
         {% if prestamo.prestamo_id %}
-            <a class="boton-exportar" href="{% url 'exportar_historia_xlsx' prestamo.pk %}" target="_blank">
+            <a class="boton-exportar" href="{% url 'appfinancia:exportar_historia_xlsx' prestamo.pk %}" target="_blank"></a>
                 📥 Exportar a Excel
             </a>
         {% endif %}

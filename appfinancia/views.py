@@ -1,7 +1,3 @@
-#from django.shortcuts import render
-#----------------------------------------------------
-
-
 #--------------------------------------------------------------
 # Create your views here.
 # En views.py de tu app
@@ -9,6 +5,7 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
 from django.http import HttpRequest
+from django.contrib.admin.views.decorators import staff_member_required
 
 def login_view(request: HttpRequest):
     if request.method == 'POST':
@@ -104,7 +101,7 @@ from .models import Prestamos, Historia_Prestamos, Conceptos_Transacciones
 def plan_de_pagos_view(request, prestamo_id):
     """
     Vista personalizada que muestra el plan de pagos de un préstamo en una sola página.
-    - Filtra solo cuotas reales (numero_cuota > 0 y conceptos válidos).
+    - Filtra solo cuotas reales 
     - Agrega datos clave en el contexto para el encabezado.
     """
     prestamo = get_object_or_404(Prestamos, prestamo_id=prestamo_id)
@@ -119,8 +116,8 @@ def plan_de_pagos_view(request, prestamo_id):
 
     # === 2. Filtrar SOLO cuotas reales ===
     transacciones = Historia_Prestamos.objects.filter(
-        prestamo_id=prestamo,
-        numero_cuota__gt=0  # Solo cuotas con número > 0
+        prestamo_id=prestamo
+        #numero_cuota__gt=0  #  la cuota 0 es la CI y si se lista 2026-01-14
     ).exclude(
         concepto_id__in=[causac_concepto, excedente_concepto]
     ).select_related(
@@ -180,7 +177,7 @@ def plan_de_pagos_view(request, prestamo_id):
     # Fecha de vencimiento final
     fecha_vencimiento_final = Historia_Prestamos.objects.filter(
         prestamo_id=prestamo,
-        numero_cuota__gt=0
+        numero_cuota__gt=0     #<----- aqui si esta ok que excluya cuota 0 2026-01-14
     ).aggregate(Max('fecha_vencimiento'))['fecha_vencimiento__max']
 
     # Tasa mensual
@@ -221,6 +218,7 @@ def exportar_historia_xlsx(request, prestamo_id):
 
     # === 1. Obtener conceptos a EXCLUIR ===
     try:
+        desemb_concepto = Conceptos_Transacciones.objects.get(concepto_id="DES")
         causac_concepto = Conceptos_Transacciones.objects.get(concepto_id="CAUSAC")
         excedente_concepto = Conceptos_Transacciones.objects.get(concepto_id="PAGOEXC")
     except Conceptos_Transacciones.DoesNotExist:
@@ -228,10 +226,10 @@ def exportar_historia_xlsx(request, prestamo_id):
 
     # === 2. Filtrar SOLO cuotas reales ===
     transacciones = Historia_Prestamos.objects.filter(
-        prestamo_id=prestamo,
-        numero_cuota__gt=0
+        prestamo_id=prestamo
+        #numero_cuota__gt=0 la cuota 0 es la CI, se debe listar 20260114
     ).exclude(
-        concepto_id__in=[causac_concepto, excedente_concepto]
+        concepto_id__in=[causac_concepto, excedente_concepto, desemb_concepto]
     ).select_related(
         'concepto_id'
     ).order_by(
@@ -269,7 +267,7 @@ def exportar_historia_xlsx(request, prestamo_id):
     # === 4. Datos para el encabezado ===
     fecha_vencimiento_final = Historia_Prestamos.objects.filter(
         prestamo_id=prestamo,
-        numero_cuota__gt=0
+        numero_cuota__gt=0   #<----- aqui si esta ok que excluya cuota 0 2026-01-14
     ).aggregate(Max('fecha_vencimiento'))['fecha_vencimiento__max']
 
     tasa_mensual = float(prestamo.tasa) / 12 if prestamo.tasa else 0.0
@@ -501,164 +499,197 @@ import io
 from .models import Prestamos, Fechas_Sistema, Historia_Prestamos, Conceptos_Transacciones
 
 
-def estado_cuenta_view(request, prestamo_id):
+
+#------------------------ estado de cuenta ---------------------
+from django.shortcuts import render, get_object_or_404
+from django.http import HttpResponse
+from .models import Prestamos, Fechas_Sistema
+from decimal import Decimal
+from openpyxl import Workbook
+from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
+import io
+
+def formato_numero(valor):
+    """Formatea un número como string: 25487.4 → '25,487.40'"""
+    return f"{valor:,.2f}"
+# ================================================================
+# FUNCIÓN AUXILIAR: construye el contexto para estado de cuenta
+# ================================================================
+def construir_contexto_estado_cuenta(prestamo_id):
+    """Construye el contexto completo (HTML y Excel) para el estado de cuenta."""
     prestamo = get_object_or_404(Prestamos, prestamo_id=prestamo_id)
     cliente = prestamo.cliente_id
 
     fecha_sistema = Fechas_Sistema.objects.first()
     if not fecha_sistema:
-        return HttpResponse("Error: No hay fecha de proceso definida.", status=500)
+        raise ValueError("No hay fecha de sistema configurada.")
     fecha_corte = fecha_sistema.fecha_proceso_actual
 
-    try:
-        cap_concepto = Conceptos_Transacciones.objects.get(concepto_id="PLANCAP")
-        int_concepto = Conceptos_Transacciones.objects.get(concepto_id="PLANINT")
-        seg_concepto = Conceptos_Transacciones.objects.get(concepto_id="PLANSEG")
-        fee_concepto = Conceptos_Transacciones.objects.get(concepto_id="PLANGTO")
-    except Conceptos_Transacciones.DoesNotExist:
-        return HttpResponse("Error: Conceptos de transacción no encontrados.", status=500)
+    # --- Valores principales ---
+    saldo_capital = prestamo.saldo_capital_pendiente()
+    intereses_vencidos = prestamo.intereses_vencidos_no_pagados()
+    seguros_vencidos = prestamo.seguros_vencidos_no_pagados()
+    gastos_vencidos = prestamo.gastos_vencidos_no_pagados()
+    cuotas_atrasadas, dias_mora = prestamo.cuotas_atrasadas_info()
+    total_corte = saldo_capital + intereses_vencidos + seguros_vencidos + gastos_vencidos
 
-    saldo_capital = saldo_intereses = saldo_seguro = fee = Decimal('0.00')
+    # --- Componentes del MONTO ATRASADO ---
+    capital_cuotas_pendientes = prestamo.capital_vencido_no_pagado()
+    intereses_programados = prestamo.intereses_programados_vencidos_no_pagados()
+    # ✅ Cálculo seguro de mora: diferencia entre vencidos y programados
+    intereses_mora = max(intereses_vencidos - intereses_programados, Decimal('0.00'))
+    seguros_cuotas_pendientes = prestamo.seguros_vencidos_no_pagados()
+    total_monto_atrasado = prestamo.monto_atrasado()
 
-    cuotas_programadas = Historia_Prestamos.objects.filter(
-        prestamo_id=prestamo,
-        fecha_vencimiento__lte=fecha_corte,
-        concepto_id__in=[cap_concepto, int_concepto, seg_concepto, fee_concepto]
-    )
-
-    for cuota in cuotas_programadas:
-        if cuota.concepto_id == cap_concepto:
-            saldo_capital += cuota.monto_transaccion
-        elif cuota.concepto_id == int_concepto:
-            saldo_intereses += cuota.monto_transaccion
-        elif cuota.concepto_id == seg_concepto:
-            saldo_seguro += cuota.monto_transaccion
-        elif cuota.concepto_id == fee_concepto:
-            fee += cuota.monto_transaccion
-
-    suma_total_corte = saldo_capital + saldo_intereses + saldo_seguro + fee
-
-    cuotas_atrasadas = Historia_Prestamos.objects.filter(
-        prestamo_id=prestamo,
-        fecha_vencimiento__lt=fecha_corte,
-        estado="PENDIENTE"
-    ).exclude(concepto_id__concepto_id="CAUSAC")
-
-    cantidad_cuotas_atrasadas = cuotas_atrasadas.count()
-    dias_mora = 0
-    capital_atrasado = intereses_atrasados = seguro_atrasado = fee_atrasado = Decimal('0.00')
-
-    if cantidad_cuotas_atrasadas > 0:
-        ultima_vencida = cuotas_atrasadas.order_by('-fecha_vencimiento').first()
-        dias_mora = (fecha_corte - ultima_vencida.fecha_vencimiento).days
-        for cuota in cuotas_atrasadas:
-            if cuota.concepto_id == cap_concepto:
-                capital_atrasado += cuota.monto_transaccion
-            elif cuota.concepto_id == int_concepto:
-                intereses_atrasados += cuota.monto_transaccion
-            elif cuota.concepto_id == seg_concepto:
-                seguro_atrasado += cuota.monto_transaccion
-            elif cuota.concepto_id == fee_concepto:
-                fee_atrasado += cuota.monto_transaccion
-
-    suma_total_atrasado = capital_atrasado + intereses_atrasados + seguro_atrasado + fee_atrasado
-
-    context = {
+    return {
         'prestamo': prestamo,
         'cliente': cliente,
         'fecha_corte': fecha_corte,
         'saldo_capital': saldo_capital,
-        'saldo_intereses': saldo_intereses,
-        'saldo_seguro': saldo_seguro,
-        'fee': fee,
-        'suma_total_corte': suma_total_corte,
-        'cantidad_cuotas_atrasadas': cantidad_cuotas_atrasadas,
+        'intereses_vencidos': intereses_vencidos,
+        'seguros_vencidos': seguros_vencidos,
+        'gastos_vencidos': gastos_vencidos,
+        'total_corte': total_corte,
+        'cuotas_atrasadas': cuotas_atrasadas,
         'dias_mora': dias_mora,
-        'capital_atrasado': capital_atrasado,
-        'intereses_atrasados': intereses_atrasados,
-        'seguro_atrasado': seguro_atrasado,
-        'fee_atrasado': fee_atrasado,
-        'suma_total_atrasado': suma_total_atrasado,
-        'prestamo_id_valor': prestamo.prestamo_id_id,  # ← el ID numérico
+        'prestamo_id_num': prestamo.prestamo_id.prestamo_id,
+
+        # Componentes del monto atrasado
+        'capital_cuotas_pendientes': capital_cuotas_pendientes,
+        'intereses_programados': intereses_programados,
+        'intereses_mora': intereses_mora,
+        'seguros_cuotas_pendientes': seguros_cuotas_pendientes,
+        'total_monto_atrasado': total_monto_atrasado,
+       #
+       #numeros con formato  para el html
+        'saldo_capital_fmt': formato_numero(saldo_capital),
+        'intereses_vencidos_fmt': formato_numero(intereses_vencidos),
+        'seguros_vencidos_fmt': formato_numero(seguros_vencidos),
+        'gastos_vencidos_fmt': formato_numero(gastos_vencidos),  # ✅
+        'total_corte_fmt': formato_numero(total_corte),
+        'capital_cuotas_pendientes_fmt': formato_numero(capital_cuotas_pendientes),
+        'intereses_programados_fmt': formato_numero(intereses_programados),
+        'intereses_mora_fmt': formato_numero(intereses_mora),
+        'seguros_cuotas_pendientes_fmt': formato_numero(seguros_cuotas_pendientes),
+        'total_monto_atrasado_fmt': formato_numero(total_monto_atrasado),
     }
 
+
+# ================================================================
+# VISTA: Estado de cuenta en HTML (con opción de Excel vía ?format=excel)
+# ================================================================
+def estado_cuenta(request, prestamo_id):
+    context = construir_contexto_estado_cuenta(prestamo_id)
     if request.GET.get('format') == 'excel':
         return generar_excel_estado_cuenta(context)
-    else:
-        html_content = render_to_string('appfinancia/estado_cuenta.html', context)
-        return HttpResponse(html_content)
+    return render(request, 'appfinancia/estado_cuenta.html', context)
 
 
+# ================================================================
+# VISTA: Estado de cuenta en Excel (para URL /excel/)
+# ================================================================
+def generar_excel_estado_cuenta_view(request, prestamo_id):
+    context = construir_contexto_estado_cuenta(prestamo_id)
+    return generar_excel_estado_cuenta(context)
+
+
+# ================================================================
+# FUNCIÓN: Genera archivo Excel
+# ================================================================
 def generar_excel_estado_cuenta(context):
     wb = Workbook()
     ws = wb.active
     ws.title = "Estado de Cuenta"
 
-    bold_font = Font(bold=True)
-    ws.cell(row=1, column=1, value="Estado de Cuenta").font = bold_font
-    ws.merge_cells('A1:D1')
-    ws.cell(row=2, column=1, value=f"Prestamo ID: {context['prestamo'].prestamo_id}")
-    ws.cell(row=3, column=1, value=f"Cliente: {context['cliente'].nombre} {context['cliente'].apellido}")
+    bold = Font(bold=True)
 
-    row_num = 5
-    ws.cell(row=row_num, column=1, value="A la fecha de corte").font = bold_font
-    row_num += 1
+    # Encabezado
+    ws.merge_cells('A1:B1')
+    ws.cell(1, 1, "ESTADO DE CUENTA").font = bold
+    ws.cell(2, 1, "Préstamo:")
+    ws.cell(2, 2, context['prestamo_id_num'])
+    ws.cell(3, 1, "Cliente:")
+    ws.cell(3, 2, f"{context['cliente'].nombre} {context['cliente'].apellido}")
+    ws.cell(4, 1, "Fecha de corte:")
+    ws.cell(4, 2, str(context['fecha_corte']))
 
-    data = [
-        ("Saldo capital:", context['saldo_capital']),
-        ("Saldo Intereses:", context['saldo_intereses']),
-        ("Saldo Seguro de vida:", context['saldo_seguro']),
-        ("Fee:", context['fee']),
-        ("Saldo Total:", context['suma_total_corte']),
+    # Detalle del adeudo
+    row = 6
+    ws.cell(row, 1, "DETALLE DEL ADEUDO").font = bold
+    row += 1
+
+    items = [
+        ("Saldo Capital", float(context['saldo_capital'])),
+        ("Intereses Vencidos (incl. mora)", float(context['intereses_vencidos'])),
+        ("Seguros Vencidos", float(context['seguros_vencidos'])),
+        ("Gastos (Fee) Vencidos", float(context['gastos_vencidos'])),
+        ("TOTAL ADEUDADO", float(context['total_corte'])),
     ]
 
-    for label, value in data:
-        ws.cell(row=row_num, column=1, value=label)
-        ws.cell(row=row_num, column=2, value=value).number_format = '#,##0.00'
-        row_num += 1
+    for label, value in items:
+        ws.cell(row, 1, label)
+        ws.cell(row, 2, value)
+        if "TOTAL" in label:
+            ws.cell(row, 1).font = bold
+            ws.cell(row, 2).font = bold
+        row += 1
 
-    row_num += 1
-    ws.cell(row=row_num, column=1, value="Atrasado").font = bold_font
-    row_num += 1
+    # Información de mora
+    row += 1
+    ws.cell(row, 1, "INFORMACIÓN DE MORA").font = bold
+    row += 1
+    ws.cell(row, 1, "Cuotas en atraso")
+    ws.cell(row, 2, context['cuotas_atrasadas'])
+    row += 1
+    ws.cell(row, 1, "Días de mora")
+    ws.cell(row, 2, context['dias_mora'])
 
-    data_atrasado = [
-        ("Cantidad de cuotas atrasadas:", context['cantidad_cuotas_atrasadas']),
-        ("Días de mora:", context['dias_mora']),
-        ("Monto capital atrasado:", context['capital_atrasado']),
-        ("Intereses atrasados:", context['intereses_atrasados']),
-        ("Seguro atrasado:", context['seguro_atrasado']),
-        ("Fee atrasado:", context['fee_atrasado']),
-        ("Suma total valores atrasados:", context['suma_total_atrasado']),
+    # Monto atrasado detallado
+    row += 2
+    ws.cell(row, 1, "MONTO ATRASADO (DETALLE)").font = bold
+    row += 1
+
+    monto_items = [
+        ("Capital de cuotas pendientes", float(context['capital_cuotas_pendientes'])),
+        ("Intereses programados vencidos", float(context['intereses_programados'])),
+        ("Intereses de mora", float(context['intereses_mora'])),  # ✅ 25,487.40
+        ("Seguros de cuotas pendientes", float(context['seguros_cuotas_pendientes'])),
+        ("Gastos (Fee) Vencidos", float(context['gastos_vencidos'])),
+        ("TOTAL MONTO ATRASADO", float(context['total_monto_atrasado'])),
     ]
 
-    for label, value in data_atrasado:
-        ws.cell(row=row_num, column=1, value=label)
-        ws.cell(row=row_num, column=2, value=value).number_format = '#,##0.00'
-        row_num += 1
+    for label, value in monto_items:
+        ws.cell(row, 1, label)
+        ws.cell(row, 2, value)
+        if "TOTAL" in label:
+            ws.cell(row, 1).font = bold
+            ws.cell(row, 2).font = bold
+        row += 1
 
-    ws.column_dimensions['A'].width = 30
+    # Formato numérico: 25,487.40
+    for r in range(2, row):
+        cell = ws.cell(r, 2)
+        if isinstance(cell.value, (int, float)):
+            cell.number_format = '#,##0.00'
+
+    # Ancho de columnas
+    ws.column_dimensions['A'].width = 40
     ws.column_dimensions['B'].width = 20
 
+    # Respuesta
     buffer = io.BytesIO()
     wb.save(buffer)
     buffer.seek(0)
-
     response = HttpResponse(
         buffer.getvalue(),
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
-    response['Content-Disposition'] = f'attachment; filename=estado_cuenta_{context["prestamo"].prestamo_id}.xlsx'
+    response['Content-Disposition'] = f'attachment; filename=EstadoCuenta_{context["prestamo_id_num"]}.xlsx'
     return response
-# appfinancia/views.py
 
-#-------------------------------------------------------------
+#----------------------------------------------------------
 
-
-# admin.py
-# appfinancia/admin.py
-# appfinancia/views.py
-
-# appfinancia/views.py
 
 from django.shortcuts import render
 from django.http import HttpResponse
@@ -667,8 +698,8 @@ from django.contrib import admin  # ← ¡Importante para site_title y site_head
 from django.contrib.auth.decorators import permission_required
 import csv
 from io import StringIO
-from .forms import ConsultaCausacionForm
-from .utils import total_intereses_por_periodo
+#from .forms import ConsultaCausacionForm
+#from .utils import total_intereses_por_periodo
 
 
 @permission_required('appfinancia.puede_consultar_causacion', raise_exception=True)
@@ -676,7 +707,8 @@ def consulta_causacion_view(request):
     """
     Vista equivalente a la que tenías en el ModelAdmin, pero ahora en views.py.
     """
-
+    from .utils import total_intereses_por_periodo
+    from .forms import ConsultaCausacionForm
     # === FUNCIÓN EQUIVALENTE A get_context ===
     def get_context(form, extra_data=None):
         context = {
@@ -772,119 +804,7 @@ def consulta_causacion_view(request):
         context = get_context(form)
         return render(request, 'admin/consulta_causacion.html', context)
     
-#-------------------------- Balance de Operaciones ----------
-from django.shortcuts import render
-from django.http import HttpResponse
-from django.contrib import messages
-from django.contrib import admin  # ← ¡Importante para site_title y site_header!
-from django.contrib.auth.decorators import permission_required
-import csv
-from io import StringIO
-from .forms import ConsultaCausacionForm
-from .utils import total_intereses_por_periodo
 
-
-@permission_required('appfinancia.puede_consultar_causacion', raise_exception=True)
-def consulta_causacion_view(request):
-    """
-    Vista equivalente a la que tenías en el ModelAdmin, pero ahora en views.py.
-    """
-
-    # === FUNCIÓN EQUIVALENTE A get_context ===
-    def get_context(form, extra_data=None):
-        context = {
-            'form': form,
-            'title': 'Reporte de Causación por Período',
-            'site_title': admin.site.site_title,      # ← igual que antes
-            'site_header': admin.site.site_header,    # ← igual que antes
-            'has_permission': True,                   # ← ¡clave para evitar "acceso denegado"!
-        }
-        if extra_data:
-            context.update(extra_data)
-        return context
-
-    # === LÓGICA PRINCIPAL (igual que antes, pero sin self) ===
-    if request.method == 'POST':
-        form = ConsultaCausacionForm(request.POST)
-        if form.is_valid():
-            fecha_inicio = form.cleaned_data['fecha_inicio']
-            fecha_fin = form.cleaned_data['fecha_fin']
-            tipo_reporte = form.cleaned_data['tipo_reporte']
-
-            try:
-                resultado = total_intereses_por_periodo(fecha_inicio, fecha_fin)
-                total_intereses = resultado['total_intereses']
-                total_ajustes = resultado['total_ajustes']
-                detalle = resultado['detalle_por_prestamo']
-                num_prestamos = len(detalle)
-
-                def formatear_monto_para_pantalla(valor):
-                    return f"{valor:,.2f}"
-
-                if tipo_reporte == 'pantalla':
-                    context = get_context(form, {
-                        'resultado_pantalla': {
-                            'fecha_inicio': fecha_inicio,
-                            'fecha_fin': fecha_fin,
-                            'total_intereses': formatear_monto_para_pantalla(total_intereses),
-                            'total_ajustes': formatear_monto_para_pantalla(total_ajustes),
-                            'num_prestamos': num_prestamos,
-                        }
-                    })
-                    messages.success(request, "Totales calculados exitosamente.")
-                    return render(request, 'admin/consulta_causacion.html', context)
-
-                elif tipo_reporte == 'excel':
-                    output = StringIO()
-                    writer = csv.writer(output)
-                    writer.writerow([
-                        'prestamo_id',
-                        'periodo_inicio',
-                        'periodo_fin',
-                        'dias',
-                        'saldo_inicial',
-                        'tasa',
-                        'interes_causado',
-                        'ajuste_intrs_causacion',
-                        'tipo_evento'
-                    ])
-                    for prestamo_id, periodos in detalle.items():
-                        for p in periodos:
-                            writer.writerow([
-                                prestamo_id,
-                                p['periodo_inicio'].strftime('%Y-%m-%d'),
-                                p['periodo_fin'].strftime('%Y-%m-%d'),
-                                p['dias'],
-                                f"{p['saldo_inicial']:.2f}",
-                                f"{p['tasa']:.6f}",
-                                f"{p['interes_causado']:.2f}",
-                                f"{p['ajuste_intrs_causacion']:.2f}",
-                                p['tipo_evento']
-                            ])
-
-                    csv_content = output.getvalue()
-                    output.close()
-
-                    response = HttpResponse(csv_content, content_type='text/csv')
-                    response['Content-Disposition'] = f'attachment; filename="causacion_detalle_{fecha_inicio}_{fecha_fin}.csv"'
-                    messages.success(request, f"Reporte generado. Fechas: {fecha_inicio} a {fecha_fin} | Préstamos: {num_prestamos}")
-                    return response
-
-            except Exception as e:
-                messages.error(request, f"Error al procesar: {str(e)}")
-                context = get_context(form, {'error': str(e)})
-                return render(request, 'admin/consulta_causacion.html', context)
-        else:
-            # Formulario no válido
-            context = get_context(form)
-            return render(request, 'admin/consulta_causacion.html', context)
-
-    else:
-        # GET: mostrar formulario vacío
-        form = ConsultaCausacionForm()
-        context = get_context(form)
-        return render(request, 'admin/consulta_causacion.html', context)
-    
 #-------------------------- Balance de Operaciones ----------
 from .forms import BalanceOperacionesForm  # ← Agrega este import al inicio del archivo
 from decimal import Decimal
@@ -1289,4 +1209,623 @@ def prestamos_vencidos_view(request):
         form = PrestamosVencidosForm()
         context = get_context(form)
         return render(request, 'admin/prestamos_vencidos.html', context)
+
+
+ 
+#-------------------- vistas para previsualizar aplicacion pagos y confirmar -----------
+from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
+from decimal import Decimal
+from collections import defaultdict
+from .utils import aplicar_pago  # ✅ Ya no usamos simular_aplicacion_pago
+from .models import Pagos, Prestamos
+import os
+
+# views.py
+@staff_member_required
+def previsualizar_aplicacion_pago(request, pago_id):
+    from .models import Clientes, Prestamos
+    from django.utils import timezone
+
+    pago = get_object_or_404(Pagos, pk=pago_id)
+    prestamo_real_id = pago.prestamo_id_real 
+
+    if prestamo_real_id is None:
+        messages.error(request, f"Error: El pago ID {pago_id} no tiene un Préstamo Real asociado.")
+        return redirect('admin:appfinancia_pagos_change', object_id=pago_id)
+
+    try:
+        prestamo = Prestamos.objects.get(prestamo_id__prestamo_id=prestamo_real_id)
+    except Prestamos.DoesNotExist:
+        messages.error(request, f"Error: El préstamo ID {prestamo_real_id} no existe.")
+        return redirect('admin:appfinancia_pagos_changelist')
+
+    if pago.estado_pago.upper() != 'CONCILIADO':
+        messages.error(request, "Solo se pueden previsualizar pagos conciliados.")
+        return redirect('admin:appfinancia_pagos_changelist')
+
+    try:
+        resultado = aplicar_pago(pago_id, simular=True)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('admin:appfinancia_pagos_change', object_id=pago_id)
+
+    # === Obtener cliente real ===
+    cliente = None
+    if pago.cliente_id_real:
+        cliente = Clientes.objects.filter(cliente_id=pago.cliente_id_real).first()
+
+    # === ✅ CALCULAR TOTALES APLICADOS (para el desglose) ===
+    from .utils import calcular_totales_aplicados, calcular_saldos_especiales
+    totales_aplicados = calcular_totales_aplicados(
+        resultado.get('cuotas_detalle', {}),
+        resultado.get('monto_ajuste', 0),
+        resultado.get('ajuint_aplicado', 0)
+    )
+    
+    # === ✅ CALCULAR RESUMEN DE SIMULACIÓN ===
+    from .utils import calcular_resumen_simulacion
+    saldo_anterior = prestamo.saldo_capital_pendiente()  # Estado ANTES del pago
+    resumen_obligacion = calcular_resumen_simulacion(
+        prestamo,
+        resultado.get('cuotas_detalle', {}),
+        pago.fecha_pago,
+        saldo_anterior
+    )
+    
+    # === Calcular saldos especiales ===
+    saldos_especiales = calcular_saldos_especiales(
+        prestamo, 
+        pago, 
+        [], 
+        resultado.get('cuotas_detalle', {}),
+        resultado.get('monto_ajuste', 0)
+    )
+    saldos_especiales['monto_en_mora'] = resumen_obligacion['monto_en_mora']
+
+    context = {
+        'pago': pago,
+        'cliente': cliente,
+        'prestamo': prestamo,
+        'resultado': resultado,
+        'totales_aplicados': totales_aplicados,
+        'resumen_obligacion': resumen_obligacion,
+        'saldos_especiales': saldos_especiales,
+        'fecha_operacion': timezone.now(),
+        'es_previsualizacion': True,
+    }
+    return render(request, 'appfinancia/comprobante_unificado.html', context)
+
+
+#___________________________________________________
+# views.py
+# views.py
+from django.utils import timezone
+from django.shortcuts import get_object_or_404, redirect
+from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
+from django.db import transaction
+from decimal import Decimal
+from collections import defaultdict
+from .models import Pagos, ComprobantePago, Bitacora  # ← Asegúrate de importar Bitacora
+from .utils import aplicar_pago
+import logging
+
+logger = logging.getLogger(__name__)
+
+@staff_member_required
+def confirmar_aplicacion_pago(request, pago_id):
+    """
+    Confirma la aplicación REAL de un pago conciliado.
+    - Aplica el pago (simular=False)
+    - Guarda el comprobante en la base de datos
+    - NO genera archivos físicos
+    - En caso de error, registra en Bitácora (fuera de transacción)
+    """
+    if request.method != 'POST':
+        messages.error(request, "Método no permitido.")
+        return redirect('admin:appfinancia_pagos_changelist')
+
+    pago = get_object_or_404(Pagos, pk=pago_id)
+    
+    if pago.estado_pago.upper() != 'CONCILIADO':
+        messages.error(request, "El pago no está en estado conciliado.")
+        return redirect('admin:appfinancia_pagos_changelist')
+
+    try:
+        with transaction.atomic():
+            print(f"DEBUG: confirmar_aplicacion_pago #1 voy a  aplicar_pago")
+            # === 1. Aplicar pago en modo REAL ===
+            resultado = aplicar_pago(
+                pago_id=pago_id,
+                usuario_nombre=request.user.username,
+                simular=False
+            )
+            print(f"DEBUG: confirmar_aplicacion_pago #2 regreso de aplicar_pago=")
+            # === 2. Reconstruir cuotas_detalle ===
+            cuotas_detalle = defaultdict(lambda: {
+                'fecha_vencimiento': None,
+                'capital': Decimal('0.00'),
+                'interes': Decimal('0.00'),
+                'interes_mora': Decimal('0.00'),
+                'seguro': Decimal('0.00'),
+                'gastos': Decimal('0.00'),
+            })
+            print(f"DEBUG: confirmar_aplicacion_pago #3 entro al for de resultado=")
+            for item in resultado.get('aplicaciones_realizadas', []):
+                if item.get('numero_cuota') is None:
+                    continue
+                cuota = item['numero_cuota']
+                if cuotas_detalle[cuota]['fecha_vencimiento'] is None:
+                    cuotas_detalle[cuota]['fecha_vencimiento'] = item.get('fecha_vencimiento')
+                comp = item['componente']
+                monto = Decimal(str(item['monto']))
+                if comp == 'CAPITAL':
+                    cuotas_detalle[cuota]['capital'] += monto
+                elif comp == 'INTERES':
+                    cuotas_detalle[cuota]['interes'] += monto
+                elif comp == 'INTERES_MORA':
+                    cuotas_detalle[cuota]['interes_mora'] += monto
+                elif comp == 'SEGURO':
+                    cuotas_detalle[cuota]['seguro'] += monto
+                elif comp == 'GASTOS':
+                    cuotas_detalle[cuota]['gastos'] += monto
+
+            print(f"DEBUG: confirmar_aplicacion_pago #3 Agregar excedente si aplica =")
+            # === 3. Agregar excedente si aplica ===
+            if resultado.get('ajuste_tipo') == 'EXCEDENTE' and resultado.get('monto_ajuste', 0) > 0:
+                cuotas_detalle['Excedente'] = {
+                    'fecha_vencimiento': None,
+                    'capital': Decimal('0.00'),
+                    'interes': Decimal('0.00'),
+                    'interes_mora': Decimal('0.00'),
+                    'seguro': Decimal('0.00'),
+                    'gastos': Decimal(str(resultado['monto_ajuste'])),
+                }
+
+            print(f"DEBUG: confirmar_aplicacion_pago 4. Serializar datos para JSON =")
+            # === 4. Serializar datos para JSON ===
+            cuotas_serializables = {}
+            for k, v in cuotas_detalle.items():
+                cuotas_serializables[str(k)] = {
+                    'fecha_vencimiento': v['fecha_vencimiento'].isoformat() if v['fecha_vencimiento'] else None,
+                    'capital': float(v['capital']),
+                    'interes': float(v['interes']),
+                    'interes_mora': float(v['interes_mora']),
+                    'seguro': float(v['seguro']),
+                    'gastos': float(v['gastos']),
+                }
+
+            print(f"DEBUG: confirmar_aplicacion_pago 4A serializable =")
+            resultado_serializable = {
+                'fecha_aplicacion': resultado['fecha_aplicacion'].isoformat() if resultado.get('fecha_aplicacion') else None,
+                'monto_debido': float(resultado['monto_debido']),
+                'monto_pago': float(resultado['monto_pago']),
+                'diferencia': float(resultado['diferencia']),
+                'ajuste_tipo': resultado.get('ajuste_tipo'),
+                'monto_ajuste': float(resultado.get('monto_ajuste', 0)),
+                'ajuint_pendiente': float(resultado.get('ajuint_pendiente', 0)),
+                'ajuint_aplicado': float(resultado.get('ajuint_aplicado', 0)),  # ← ¡AGREGA ESTA LÍNEA!
+                'prestamo_id': pago.prestamo_id_real,
+                'total_aplicado': float(resultado.get('monto_pago', 0) - resultado.get('monto_ajuste', 0)),
+            }
+
+            print(f"DEBUG: confirmar_aplicacion_pago 5. calcular resumen==")
+            # === 5. ✅ CALCULAR RESUMEN REAL (después de aplicar el pago) ===
+            from .models import Prestamos
+            prestamo = Prestamos.objects.get(prestamo_id__prestamo_id=pago.prestamo_id_real)
+            from .utils import calcular_resumen_real
+            resumen_obligacion = calcular_resumen_real(prestamo, pago, pago.fecha_pago)
+
+            print(f"DEBUG: confirmar_aplicacion_pago 6. Guardar comprobante en BD =")
+            print(f"DEBUG: prestamo_id_real = {pago.prestamo_id_real} (tipo: {type(pago.prestamo_id_real)})")
+            print(f"DEBUG: cliente_id_real = {pago.cliente_id_real} (tipo: {type(pago.cliente_id_real)})")
+            print(f"DEBUG: pago_id = {pago.pago_id} (tipo: {type(pago.pago_id)})")
+
+            # Verificar los valores que se intentan guardar
+            print(f"DEBUG: defaults = {{")
+            print(f"    'prestamo_id': {pago.prestamo_id_real or 0},")
+            print(f"    'cliente_id': {pago.cliente_id_real or 0},")
+            print(f"    'datos_json': {{...}}")
+            print(f"}}")
+
+            # === 6. Guardar comprobante en BD (dentro de transacción) ===
+            ComprobantePago.objects.update_or_create(
+                pago=pago,
+                defaults={
+                    'datos_json': {
+                        'resultado': resultado_serializable,
+                        'cuotas_detalle': cuotas_serializables,
+                        'resumen_obligacion': resumen_obligacion,  # ← ¡AGREGA EL RESUMEN REAL!
+                    },
+                    'prestamo_id': pago.prestamo_id_real or 0,
+                    'cliente_id': pago.cliente_id_real or 0,
+                }
+            )
+
+        print(f"DEBUG: confirmar_aplicacion_pago 7. exito redirigir =")
+        # === 7. Éxito: redirigir al comprobante ===
+        messages.success(request, f"Pago {pago_id} aplicado exitosamente. Comprobante generado.")
+        return redirect('admin:appfinancia_pagos_ver_comprobante', pago_id=pago_id)
+
+    except Exception as e:
+        error_msg = f"❌ Error al aplicar pagos: {str(e)}"
+        messages.error(request, error_msg)
+
+        print(f"DEBUG: confirmar_aplicacion_pago 8. exiregistrar bitacora =")
+        # === 8. 📝 Registrar en Bitácora (FUERA de la transacción) ===
+        try:
+            Bitacora.objects.create(
+                fecha_proceso=timezone.now().date(),
+                user_name=request.user.username,
+                evento_realizado='CONFIRMAR_APLICAR_PAGO',
+                proceso='ERROR',
+                resultado=error_msg[:500]  # Evitar truncamiento
+            )
+        except Exception as log_error:
+            logger.error(f"Fallo al registrar en Bitácora: {log_error}")
+
+        return redirect('admin:appfinancia_pagos_change', object_id=pago_id)
+    
+#------------------------
+from django.db.models import Q
+from .models import ComprobantePago  # asegúrate de importarlo
+@staff_member_required
+def buscar_comprobante_view(request):
+    """
+    Vista para buscar comprobantes por cliente_id, prestamo_id o pago_id.
+    """
+    query = request.GET.get('q', '').strip()
+    comprobantes = ComprobantePago.objects.none()
+    error = None
+
+    if query:
+        # Intentar interpretar la búsqueda
+        try:
+            # Si es numérico, puede ser cliente_id, prestamo_id o pago_id
+            if query.isdigit():
+                numeric_id = int(query)
+                comprobantes = ComprobantePago.objects.select_related(
+                    'pago__cliente', 'pago__prestamo'
+                ).filter(
+                    Q(cliente_id=numeric_id) |
+                    Q(prestamo_id=numeric_id) |
+                    Q(pago_id=numeric_id)
+                ).order_by('-fecha_generacion')
+            else:
+                # Si no es numérico, buscar por nombre/apellido del cliente
+                comprobantes = ComprobantePago.objects.select_related(
+                    'pago__cliente', 'pago__prestamo'
+                ).filter(
+                    Q(pago__cliente__nombre__icontains=query) |
+                    Q(pago__cliente__apellido__icontains=query)
+                ).order_by('-fecha_generacion')
+        except Exception as e:
+            error = "Error en la búsqueda. Intente con otro término."
+
+    return render(request, 'admin/buscar_comprobante.html', {
+        'query': query,
+        'comprobantes': comprobantes,
+        'error': error,
+        'opts': {
+            'app_label': 'appfinancia',
+            'model_name': 'comprobantepago'
+        }
+    })
+#----------------------------------
+
+# views.py
+# views.py
+# views.py
+@staff_member_required
+def ver_comprobante_pago(request, pago_id):
+    from .models import ComprobantePago, Clientes, Prestamos
+    from django.utils import timezone
+
+    pago = get_object_or_404(Pagos, pk=pago_id)
+    comprobante = get_object_or_404(ComprobantePago, pago=pago)
+    
+    datos = comprobante.datos_json
+    resultado = datos['resultado']
+    cuotas_detalle = {
+        (k if k == 'Excedente' else int(k)): v
+        for k, v in datos['cuotas_detalle'].items()
+    }
+
+    cliente = None
+    if pago.cliente_id_real:
+        cliente = Clientes.objects.filter(cliente_id=pago.cliente_id_real).first()
+
+    prestamo = None
+    if pago.prestamo_id_real:
+        prestamo = Prestamos.objects.filter(prestamo_id__prestamo_id=pago.prestamo_id_real).first()
+
+    if prestamo:
+        # === ✅ CALCULAR TOTALES APLICADOS (para el desglose) ===
+        from .utils import calcular_totales_aplicados
+        totales_aplicados = calcular_totales_aplicados(
+            cuotas_detalle,
+            resultado.get('monto_ajuste', 0),
+            resultado.get('ajuint_aplicado', 0)
+        )
+        
+        # === ✅ USAR RESUMEN GUARDADO O CALCULAR REAL ===
+        resumen_obligacion = datos.get('resumen_obligacion', {})
+        if not resumen_obligacion:  # Si no está guardado, calcularlo
+            from .utils import calcular_resumen_real
+            resumen_obligacion = calcular_resumen_real(prestamo, pago, pago.fecha_pago)
+        
+        # === Actualizar saldos especiales ===
+        saldos_especiales = resultado.get('saldos_especiales', {})
+        saldos_especiales['monto_en_mora'] = resumen_obligacion['monto_en_mora']
+    else:
+        from .utils import calcular_totales_aplicados
+        totales_aplicados = calcular_totales_aplicados(cuotas_detalle)
+        resumen_obligacion = datos.get('resumen_obligacion', {})
+        saldos_especiales = resultado.get('saldos_especiales', {})
+
+    context = {
+        'pago': pago,
+        'resultado': resultado,
+        'totales_aplicados': totales_aplicados,
+        'cliente': cliente,
+        'prestamo': prestamo,
+        'resumen_obligacion': resumen_obligacion,
+        'saldos_especiales': saldos_especiales,
+        'fecha_operacion': comprobante.fecha_generacion,
+        'es_previsualizacion': False,
+    }
+    return render(request, 'appfinancia/comprobante_unificado.html', context)
+
+#_______________________________________________________
+
+from django.template.loader import render_to_string
+from weasyprint import HTML
+from .utils import calcular_totales_aplicados # Asegúrate de que esté disponible
+
+@staff_member_required
+def exportar_comprobante_pdf(request, pago_id):
+    pago = get_object_or_404(Pagos, pk=pago_id)
+    comprobante = get_object_or_404(ComprobantePago, pago=pago)
+    
+    # Extraer datos del JSON guardado
+    datos = comprobante.datos_json
+    
+    # Reconstruir el contexto para el HTML
+    context = {
+        'pago': pago,
+        'totales_aplicados': calcular_totales_aplicados(
+            datos['cuotas_detalle'], 
+            datos['resultado'].get('monto_ajuste', 0), 
+            datos['resultado'].get('ajuint_aplicado', 0)
+        ),
+        'resumen_obligacion': datos.get('resumen_obligacion'),
+        'saldos_especiales': datos.get('saldos_especiales'), # Si lo guardaste
+        'es_previsualizacion': False,
+        'fecha_operacion': timezone.now(),
+    }
+
+    # Renderizar el mismo HTML que ves en pantalla
+    html_string = render_to_string('appfinancia/comprobante_unificado.html', context)
+    
+    # Convertir a PDF conservando el estilo CSS
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="comprobante_{pago_id}.pdf"'
+    
+    # base_url permite que encuentre imágenes o estilos locales
+    HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf(response)
+    
+    return response
+
+@staff_member_required
+def exportar_comprobante_excel(request, pago_id):
+    from .utils import generar_comprobante_pago_en_memoria
+    pago = get_object_or_404(Pagos, pk=pago_id)
+    comprobante = get_object_or_404(ComprobantePago, pago=pago)
+    
+    datos = comprobante.datos_json
+    resultado = datos['resultado']
+    cuotas_detalle = {
+        (k if k == 'Excedente' else int(k)): v
+        for k, v in datos['cuotas_detalle'].items()
+    }
+
+    # === Obtener cliente y préstamo para el encabezado ===
+    cliente_nombre = None
+    prestamo_id = resultado.get('prestamo_id') or pago.prestamo_id_real
+
+    if pago.cliente_id_real:
+        cliente = Clientes.objects.filter(cliente_id=pago.cliente_id_real).first()
+        if cliente:
+            cliente_nombre = f"{cliente.nombre} {cliente.apellido}"
+
+    # === Generar Excel con encabezado mejorado ===
+    _, excel_bytes = generar_comprobante_pago_en_memoria(
+        pago, resultado, cuotas_detalle,
+        cliente_nombre=cliente_nombre,
+        prestamo_id=prestamo_id
+    )
+    
+    if excel_bytes is None:
+        messages.error(request, "No se pudo generar el archivo Excel.")
+        return redirect('admin:appfinancia_pagos_ver_comprobante', pago_id=pago_id)
+    
+    response = HttpResponse(excel_bytes, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="comprobante_pago_{pago_id}.xlsx"'
+    return response
+#_____________________________________________________________________________________
+
+from django.db import transaction
+from django.contrib import messages
+from django.shortcuts import get_object_or_404, redirect
+from django.utils import timezone
+from .models import Desembolsos, Bitacora
+
+def ejecutar_desembolso_view(request, object_id):
+    # 🔑 Importaciones locales para mantener consistencia con tu lógica original
+    from .utils import (
+        get_next_asientos_id, cerrar_periodo_interes, 
+        aplicar_pago_cuota_inicial, create_prestamo, create_movimiento, 
+        calculate_loan_schedule, create_loan_payments, 
+    )
+
+    desembolso = get_object_or_404(Desembolsos, pk=object_id)
+
+    # Verificación de seguridad
+    if desembolso.estado != "A_DESEMBOLSAR":
+        messages.warning(request, f"El registro {object_id} no está en estado 'A_DESEMBOLSAR'.")
+        return redirect(f"admin:{desembolso._meta.app_label}_{desembolso._meta.model_name}_changelist")
+    
+    try:
+        with transaction.atomic():
+            # 0. Validaciones basicas para poder desembolsar
+            validar_desembolso(desembolso) 
+
+            # Obtener número de asiento contable único
+            numero_asiento_desembolso = get_next_asientos_id()
+
+            # 1. Crear Prestamo
+            prestamo = create_prestamo(desembolso)
+
+            # 2. Crear Movimiento
+            create_movimiento(desembolso)
+
+            # 4. Calcular plan de pagos
+            plan_pagos = calculate_loan_schedule(desembolso)
+
+            # 5. Crear cuotas en Historia_Prestamos
+            if plan_pagos:
+                create_loan_payments(
+                    prestamo=prestamo,
+                    desembolso=desembolso,
+                    plan_pagos=plan_pagos,
+                    user_name=request.user.username
+                )
+
+            # 6. Aplicar el pago de la cuota inicial
+            aplicar_pago_cuota_inicial(
+                desembolso, 
+                prestamo, 
+                usuario='sistema' 
+            )
+
+            # 7. Inicializar el primer período de interés
+            cerrar_periodo_interes(
+                prestamo_id=prestamo.pk,
+                fecha_corte=desembolso.fecha_desembolso,
+                pago_referencia=f"DESEMBOLSO_{desembolso.prestamo_id}",
+                numero_asiento_contable=numero_asiento_desembolso
+            )
+
+            # 8. Actualizar Estado
+            # Nota: Usamos filter().update() para mantener consistencia con tu código
+            Desembolsos.objects.filter(pk=desembolso.pk).update(estado='DESEMBOLSADO')
+
+            messages.success(request, f"✅ Desembolso {desembolso.prestamo_id} procesado exitosamente.")
+
+    except Exception as e:
+        error_msg = f"❌ Error al procesar desembolso {object_id}: {str(e)}"
+        messages.error(request, error_msg)
+        
+        Bitacora.objects.create(
+            fecha_proceso=timezone.now().date(),
+            user_name=request.user.username,
+            evento_realizado='PROCESO_DESEMBOLSOS_INDIV',
+            proceso='ERROR',
+            resultado=error_msg
+        )
+ 
+    # Al final de la función, después del bloque try/except:
+    return redirect("admin:appfinancia_desembolsos_changelist")
+
+#_______________________________________________________________________________________________
+def validar_desembolso(desembolso):
+    from decimal import Decimal, ROUND_HALF_UP
+    from .models import Pagos # Asegúrate de importar Pagos
+    
+    # 1. Validar campos obligatorios
+    if not desembolso.numero_transaccion_cuota_1:
+        raise ValueError(f"Desembolso {desembolso.prestamo_id}: sin el numero Pago ID, ingrese el numero de pago")
+    
+    # valor_esperado: cuota inicial o cuota 1
+    if desembolso.ofrece_cuota_inicial == 'SI':
+        valor_esperado = Decimal(str(desembolso.valor_cuota_inicial or 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    else:
+        valor_esperado = Decimal(str(desembolso.valor_cuota_1 or 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    # Corrección de la validación de ceros/nones
+    if not valor_esperado or valor_esperado <= 0:
+        raise ValueError(f"Desembolso {desembolso.prestamo_id}: ¡El valor de la cuota (inicial o cuota 1) debe ser mayor a cero!")
+    
+    if not desembolso.valor or desembolso.valor <= 0:
+        raise ValueError(f"Desembolso {desembolso.prestamo_id}: El valor del préstamo debe ser mayor a cero.")
+    
+    if not desembolso.tasa or desembolso.tasa <= 0:
+        raise ValueError(f"Desembolso {desembolso.prestamo_id}: La tasa no puede ser cero. Ingrese tipo y tasa.")
+    
+    if not desembolso.plazo_en_meses or desembolso.plazo_en_meses <= 0:
+        raise ValueError(f"Desembolso {desembolso.prestamo_id}: La cantidad cuotas no puede ser cero. Ingrese cantidad cuotas")
+
+    # 2. Obtener el pago
+    pago_id = desembolso.numero_transaccion_cuota_1
+    try:
+        pago = Pagos.objects.select_for_update().get(pago_id=pago_id)
+    except Pagos.DoesNotExist:
+        raise ValueError(f"El pago con ID {pago_id} no existe en la tabla Pagos.")
+
+    # 3. Validaciones de coherencia
+    valor_pago = Decimal(str(pago.valor_pago)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    
+    if valor_pago < valor_esperado:
+        raise ValueError(
+            f"El valor del pago (${valor_pago:,.0f}) es menor al requerido (${valor_esperado:,.0f})."
+        )
+        
+    if pago.prestamo_id_real != desembolso.prestamo_id:
+        raise ValueError(f"El pago {pago_id} está asignado al préstamo {pago.prestamo_id_real}, no al {desembolso.prestamo_id}.")
+    
+    if pago.fecha_pago > desembolso.fecha_desembolso: 
+        raise ValueError(f"Fecha de pago ({pago.fecha_pago:%d/%m/%Y}) no puede ser posterior al desembolso ({desembolso.fecha_desembolso:%d/%m/%Y}).")
+
+    if pago.estado_pago.lower() == 'aplicado':
+        raise ValueError(f"El pago {pago_id} ya se encuentra en estado APLICADO.")
+
+    return True
+#__________________________________________________________________________________________________
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from .models import Desembolsos
+from .forms import ReversionDesembolsoMotivoForm
+from .utils import revertir_desembolso
+from django.contrib.auth.decorators import permission_required
+
+@permission_required('appfinancia.can_revert_desembolso', raise_exception=True)
+def revertir_desembolso_confirm_view(request, object_id):
+    desembolso = get_object_or_404(Desembolsos, pk=object_id)
+
+    if request.method == 'POST':
+        form = ReversionDesembolsoMotivoForm(request.POST)
+        if form.is_valid():
+            motivo = form.cleaned_data['motivo']
+            try:
+                # Ejecutamos la lógica de reversión definida en utils
+                revertir_desembolso(object_id, request.user.username, motivo)
+                messages.success(request, f"✅ Desembolso {object_id} revertido exitosamente.")
+                return redirect("admin:appfinancia_desembolsos_changelist")
+            except Exception as e:
+                messages.error(request, f"❌ Error al revertir: {str(e)}")
+    else:
+        form = ReversionDesembolsoMotivoForm()
+
+    context = {
+        'desembolso': desembolso,
+        'form': form,
+        'opts': Desembolsos._meta,
+        'title': f"Confirmar Reversión de Desembolso: {object_id}"
+    }
+    # Apuntamos al nuevo nombre de template
+    return render(request, 'appfinancia/revertir_desembolso.html', context)
+#_______________________________________________________________________________________________
+
 

@@ -16,7 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include 
-from appfinancia.views import login_view, logout_view # type: ignore
+from appfinancia.views import login_view, logout_view
 # para prueba de login \ logout 2025.10.28
 
 from django.urls import path, include
@@ -25,10 +25,10 @@ urlpatterns = [
     #path('admin/consulta-causacion/', consulta_causacion_view, name='consulta_causacion'),
     path('admin/', admin.site.urls),
     # ...para login\logout 2025.10.28
-    path('chaining/', include('smart_selects.urls')), 
     path('login/', login_view, name='login'),
     path('logout/', logout_view, name='logout'),
-    path('', include('appfinancia.urls')),  # ← debe estar esta líneas')),
+    path('appfinancia/', include('appfinancia.urls')),
     #incluido 2025/12/10 para fragmentación de pagos
     path("appfinancia/", include("appfinancia.urls", namespace="appfinancia")),
+    
 ]

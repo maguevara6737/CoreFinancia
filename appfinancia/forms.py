@@ -200,8 +200,24 @@ class BalanceOperacionesForm(forms.Form):
         initial=date.today
     )
 # forms.py
-from django import forms
 
 class PrestamosVencidosForm(forms.Form):
     # Sin campos: la fecha es fija (hoy = fecha_proceso_actual)
     pass
+
+#---------------------------------------------------------------  
+class ReversionDesembolsoMotivoForm(forms.Form):
+    motivo = forms.CharField(
+        widget=forms.Textarea(attrs={'rows': 3, 'style': 'width: 100%;', 'placeholder': 'Escriba el motivo aquí...'}),
+        label="Motivo de la Reversión del Desembolso",
+        required=True,
+        help_text="Explique por qué este desembolso específico debe regresar a Elaboración."
+    )
+
+class ReversionPagoMotivoForm(forms.Form):
+    motivo = forms.CharField(
+        widget=forms.Textarea(attrs={'rows': 3, 'style': 'width: 100%;', 'placeholder': 'Ej: Error en fecha de aplicación...'}),
+        label="Motivo de la Reversión",
+        required=True
+    )
+#/*

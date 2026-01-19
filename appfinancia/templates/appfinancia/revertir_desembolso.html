@@ -1,0 +1,38 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block content %}
+<div id="content-main">
+    <div class="module" style="padding: 20px; border: 1px solid #ccc; background: #fff;">
+        <h2 style="color: #ffffff; border-bottom: 2px solid #ffffff; padding-bottom: 10px;">
+          🔄 REVERSIÓN DE DESEMBOLSO: {{ desembolso.prestamo_id }}
+        </h2>
+        
+        <p style="font-size: 1.1em;">Usted está solicitando regresar este proceso al estado <strong>ELABORACIÓN</strong>.</p>
+        
+        <div style="background-color: #fdf2f2; border: 1px solid #f8d7da; padding: 15px; border-radius: 4px; margin: 20px 0;">
+            <strong style="color: #721c24;">Avisos importantes:</strong>
+            <ul style="color: #721c24; margin-top: 10px;">
+                <li>Se eliminará toda la <strong>Historia del Préstamo</strong> (Cuotas y Plan de Pagos).</li>
+                <li>El <strong>Préstamo</strong> quedará en estado REVERTIDO (con saldos en cero).</li>
+                <li>El <strong>Pago de Cuota Inicial</strong> (ID: {{ desembolso.numero_transaccion_cuota_1 }}) se liberará para nuevo uso con estado REVERSADO.</li>
+                <li>Las notificaciones por correo, operaciones bancarias, contabilidad y archivos ya generados <strong>NO se borrarán</strong>.</li>
+            </ul>
+        </div>
+
+        <form method="post">
+            {% csrf_token %}
+            <div style="margin-bottom: 20px;">
+                {{ form.as_p }}
+            </div>
+            <div class="submit-row" style="background: #f8f8f8; padding: 10px; text-align: right;">
+                <input type="submit" value="Confirmar Reversión" class="default" style="background: #ba2121; cursor: pointer;">
+                
+                <a href="{% url 'admin:appfinancia_desembolsos_changelist' %}" class="button cancel-link" style="margin-left: 10px; display: inline-block; vertical-align: middle;">
+                    Regresar sin cambios
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

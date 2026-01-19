@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    {% load humanize %} 
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprobante de Pago - Financia Seguro S.A.S.</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.5;
+            color: #333;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        .comprobante-container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #4361ee;
+        }
+        .header h1 {
+            color: #4361ee;
+            margin: 10px 0;
+            font-size: 24px;
+        }
+        .header p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        .section {
+            margin: 25px 0;
+            padding: 15px;
+            border-left: 4px solid #4361ee;
+            background-color: #f8f9fa;
+        }
+        .section-title {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            font-size: 14px;
+        }
+        .info-label {
+            font-weight: bold;
+            min-width: 200px;
+        }
+        .info-value {
+            text-align: right;
+            min-width: 200px;
+        }
+        .conceptos-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        .conceptos-table th,
+        .conceptos-table td {
+            padding: 10px;
+            text-align: right;
+            border-bottom: 1px solid #ddd;
+        }
+        .conceptos-table th {
+            background-color: #4361ee;
+            color: white;
+            text-align: left;
+        }
+        .conceptos-table tr:last-child td {
+            border-bottom: none;
+        }
+        .monto {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+        .resumen-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        .resumen-table td {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+        .resumen-label {
+            font-weight: bold;
+            text-align: left;
+            width: 70%;
+        }
+        .resumen-value {
+            text-align: right;
+            width: 30%;
+            font-family: 'Courier New', monospace;
+        }
+        .total-row {
+            font-weight: bold;
+            background-color: #e8f4fc;
+        }
+        .saldos-especiales {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 10px;
+        }
+        .saldo-item {
+            padding: 10px;
+            background-color: #f0f8ff;
+            border-radius: 5px;
+            border-left: 3px solid #27ae60;
+        }
+        .saldo-label {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        .saldo-value {
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            color: #27ae60;
+        }
+        .estado-mora {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .estado-normal {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .botones {
+            margin-top: 30px;
+            text-align: center;
+        }
+        .boton {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 0 10px;
+            background: #4361ee;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        /* Nota: Se eliminó el estilo de .nota aquí ya que se quitó del pie */
+
+        /* CONFIGURACIÓN PARA PDF (Impresión) */
+        @media print {
+            @page {
+                size: letter;
+                margin: 0.8cm;
+            }
+            body {
+                font-size: 10px;
+                background-color: white;
+                padding: 0;
+            }
+            .comprobante-container {
+                padding: 15px;
+                box-shadow: none;
+                border-radius: 0;
+            }
+            .header h1 { font-size: 18px; margin: 5px 0; }
+            .section { margin: 8px 0; padding: 8px; }
+            .conceptos-table th, .conceptos-table td { padding: 5px; }
+            .botones { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+    <div class="comprobante-container">
+        <div class="header">
+            <h1>Financia Seguro S.A.S.</h1>
+            <p>NIT: 901554626-6</p>
+            <p>Fecha y Hora de Operación: {{ fecha_operacion|date:"Y-m-d H:i:s" }}</p>
+            <p><strong>Número de Comprobante:</strong> {{ pago.pago_id }}</p>
+        </div>
+
+        {% if es_previsualizacion %}
+            <div style="text-align: center; margin: 20px 0; padding: 15px; background-color: #fff3cd; border: 2px dashed #ff9800; border-radius: 8px;">
+                <strong style="font-size: 24px; color: #d35400; text-transform: uppercase;">
+                    ❗ NO VÁLIDO COMO COMPROBANTE DE PAGO ❗
+                </strong>
+            </div>
+        {% endif %}
+
+        <div class="section">
+            <div class="section-title">Información del Crédito</div>
+            <div class="info-row">
+                <span class="info-label">Titular:</span>
+                <span class="info-value">
+                    {% if cliente %}
+                        {{ cliente.nombre }} {{ cliente.apellido }}
+                    {% else %}
+                        —
+                    {% endif %}
+                </span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Número de Obligación:</span>
+                <span class="info-value">
+                    {% if prestamo %}
+                        {{ prestamo.prestamo_id.prestamo_id }}
+                    {% elif resultado.prestamo_id %}
+                        {{ resultado.prestamo_id }}
+                    {% else %}
+                        —
+                    {% endif %}
+                </span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Valor Recibido:</span>
+                <span class="info-value monto">${{ pago.valor_pago|floatformat:"2"|intcomma }}</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Desglose de Aplicación del Pago</div>
+            <table class="conceptos-table">
+                <thead>
+                    <tr>
+                        <th style="text-align: left;">Concepto</th>
+                        <th>Valor Aplicado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if totales_aplicados.gastos_vencidos > 0 %}
+                        <tr>
+                            <td style="text-align: left;">Gastos</td>
+                            <td class="monto">${{ totales_aplicados.gastos_vencidos|floatformat:"2"|intcomma }}</td>
+                        </tr>
+                    {% endif %}
+                    {% if totales_aplicados.seguros_vencidos > 0 %}
+                        <tr>
+                            <td style="text-align: left;">Seguros</td>
+                            <td class="monto">${{ totales_aplicados.seguros_vencidos|floatformat:"2"|intcomma }}</td>
+                        </tr>
+                    {% endif %}
+                    {% if totales_aplicados.intereses_mora > 0 %}
+                        <tr>
+                            <td style="text-align: left;">Intereses de Mora</td>
+                            <td class="monto">${{ totales_aplicados.intereses_mora|floatformat:"2"|intcomma }}</td>
+                        </tr>
+                    {% endif %}
+                    {% if totales_aplicados.intereses_corrientes > 0 %}
+                        <tr>
+                            <td style="text-align: left;">Intereses Corrientes</td>
+                            <td class="monto">${{ totales_aplicados.intereses_corrientes|floatformat:"2"|intcomma }}</td>
+                        </tr>
+                    {% endif %}
+                    <tr>
+                        <td style="text-align: left;">Abono a Capital (Cuota)</td>
+                        <td class="monto">${{ totales_aplicados.capital_aplicado|floatformat:"2"|intcomma }}</td>
+                    </tr>
+                    {% if totales_aplicados.monto_ajuste_total > 0 %}
+                        <tr>
+                            <td style="text-align: left;">Abono Extraordinario</td>
+                            <td class="monto">${{ totales_aplicados.monto_ajuste_total|floatformat:"2"|intcomma }}</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if resumen_obligacion %}
+        <div class="section">
+            <div class="section-title">Resumen de la Obligación tras el Pago</div>
+            <table class="resumen-table">
+                <tr>
+                    <td class="resumen-label">Saldo Anterior:</td>
+                    <td class="resumen-value monto">${{ resumen_obligacion.saldo_anterior|floatformat:"2"|intcomma }}</td>
+                </tr>
+                <tr>
+                    <td class="resumen-label">(-) Capital Pagado en esta Transacción:</td>
+                    <td class="resumen-value monto">-${{ resumen_obligacion.capital_pagado|floatformat:"2"|intcomma }}</td>
+                </tr>
+                <tr class="total-row">
+                    <td class="resumen-label">(=) Nuevo Saldo de Capital:</td>
+                    <td class="resumen-value monto">${{ resumen_obligacion.nuevo_saldo_capital|floatformat:"2"|intcomma }}</td>
+                </tr>
+                <tr>
+                    <td class="resumen-label">Cuotas Pendientes:</td>
+                    <td class="resumen-value">{{ resumen_obligacion.cuotas_pendientes }}</td>
+                </tr>
+                <tr>
+                    <td class="resumen-label">Próximo Vencimiento:</td>
+                    <td class="resumen-value">
+                        {% if resumen_obligacion.proximo_vencimiento %}
+                            {{ resumen_obligacion.proximo_vencimiento|date:"Y-m-d" }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                </tr>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if saldos_especiales %}
+        <div class="section">
+            <div class="section-title">Saldos Especiales</div>
+            <div class="saldos-especiales">
+                {% if saldos_especiales.saldo_parcial_cuota > 0 %}
+                <div class="saldo-item">
+                    <div class="saldo-label">Saldo Pendiente de la Cuota:</div>
+                    <div class="saldo-value">${{ saldos_especiales.saldo_parcial_cuota|floatformat:"2"|intcomma }}</div>
+                </div>
+                {% endif %}
+                {% if saldos_especiales.saldo_favor_cliente > 0 %}
+                <div class="saldo-item">
+                    <div class="saldo-label">Saldo a Favor del Cliente:</div>
+                    <div class="saldo-value">${{ saldos_especiales.saldo_favor_cliente|floatformat:"2"|intcomma }}</div>
+                </div>
+                {% endif %}
+                {% if saldos_especiales.monto_en_mora > 0 %}
+                <div class="saldo-item">
+                    <div class="saldo-label">Monto en Mora:</div>
+                    <div class="saldo-value">${{ saldos_especiales.monto_en_mora|floatformat:"2"|intcomma }}</div>
+                </div>
+                {% endif %}
+                <div class="saldo-item">
+                    <div class="saldo-label">Estado de la Mora:</div>
+                    <div class="saldo-value {% if 'mora' in saldos_especiales.estado_mora|lower %}estado-mora{% else %}estado-normal{% endif %}">
+                        {{ saldos_especiales.estado_mora }}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="botones">
+            {% if es_previsualizacion %}
+                <form method="post" action="{% url 'admin:appfinancia_pagos_aplicar' pago.pago_id %}" style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="boton" style="background-color: #27ae60;">
+                        ✅ Confirmar Aplicación
+                    </button>
+                </form>
+                <a href="{% url 'admin:appfinancia_pagos_changelist' %}" class="boton" style="background-color: #95a5a6;">
+                    ← Volver
+                </a>
+            {% else %}
+                <a href="{% url 'admin:appfinancia_pagos_exportar_pdf' pago.pago_id %}" target="_blank" class="boton">📄 PDF</a>
+                <a href="{% url 'admin:appfinancia_pagos_exportar_excel' pago.pago_id %}" class="boton">📊 Excel</a>
+                <a href="{% url 'admin:appfinancia_pagos_changelist' %}" class="boton">← Volver</a>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

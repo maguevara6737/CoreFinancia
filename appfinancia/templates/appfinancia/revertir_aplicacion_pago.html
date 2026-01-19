@@ -1,0 +1,29 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div class="module" style="padding: 20px; background: #fff; border: 1px solid #ccc;">
+    <h2 style="color: #ba2121;">🔄 REVERSIÓN DE APLICACIÓN DE PAGO</h2>
+    <p>Pago: <strong>{{ pago.pago_id }}</strong> | Préstamo: <strong>{{ pago.prestamo_id_real }}</strong></p>
+    
+    <div style="background-color: #fdf2f2; border: 1px solid #f8d7da; padding: 15px; margin: 20px 0;">
+        <strong>Al confirmar esta reversión:</strong>
+        <ul style="color: #721c24;">
+            <li>El pago quedará en estado <strong>REVERSADO</strong>.</li>
+            <li>Se eliminará el registro de causación de interés (<strong>CAUSAC</strong>) de este hito.</li>
+            <li>La mora aplicada será eliminada del historial del pago.</li>
+            <li>Las cuotas afectadas regresarán a estado <strong>PENDIENTE</strong>.</li>
+        </ul>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <div class="submit-row">
+            <input type="submit" value="Confirmar Reversión" class="default" style="background: #ba2121;">
+            
+            <a href="{% url 'admin:appfinancia_pagos_changelist' %}" class="button cancel-link" style="display: inline-block; vertical-align: middle; height: 15px; line-height: 15px;">
+                Cancelar y volver
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

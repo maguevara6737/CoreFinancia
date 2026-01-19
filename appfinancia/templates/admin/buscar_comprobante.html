@@ -1,0 +1,62 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block title %}Buscar Comprobante de Pago{% endblock %}
+
+{% block content %}
+<div class="module">
+    <h2>🔍 Buscar Comprobante de Pago</h2>
+    <p>Busque por: <strong>nombre del cliente</strong>, <strong>cliente ID</strong>, <strong>préstamo ID</strong> o <strong>pago ID</strong>.</p>
+
+    <form method="get" style="margin: 20px 0;">
+        <input type="text" name="q" value="{{ query|default:'' }}" 
+               placeholder="Ej: María López, 123, 456, 789" 
+               style="padding: 8px; font-size: 16px; width: 300px; margin-right: 10px;">
+        <button type="submit" class="default">Buscar</button>
+        {% if query %}
+            <a href="{% url 'admin:appfinancia_consultasreportes_buscar_comprobante' %}" class="button" style="margin-left: 10px;">Limpiar</a>
+        {% endif %}
+    </form>
+
+    {% if error %}
+        <div class="errornote" style="margin: 15px 0;">
+            {{ error }}
+        </div>
+    {% endif %}
+
+    {% if comprobantes %}
+        <h3>Resultados ({{ comprobantes.count }})</h3>
+        <table class="table table-striped" style="width: 100%; margin-top: 15px;">
+            <thead>
+                <tr>
+                    <th>Pago ID</th>
+                    <th>Cliente</th>
+                    <th>Préstamo</th>
+                    <th>Fecha Pago</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for comp in comprobantes %}
+                <tr>
+                    <td>{{ comp.pago.id }}</td>
+                    <td>{{ comp.pago.cliente.nombre }} {{ comp.pago.cliente.apellido }}</td>
+                    <td>{{ comp.pago.prestamo_id }}</td>
+                    <td>{{ comp.pago.fecha_pago|date:"Y-m-d" }}</td>
+                    <td>
+                        <a href="{% url 'admin:ver_comprobante_pago' comp.pago.id %}" 
+                           target="_blank" class="button" style="font-size: 12px; padding: 4px 8px;">
+                            👁️ Ver
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% elif query and not error %}
+        <div class="warning" style="margin: 15px 0; padding: 10px; background: #fff8e1; border-radius: 5px;">
+            No se encontraron comprobantes para: <strong>{{ query }}</strong>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
