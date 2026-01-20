@@ -15,6 +15,7 @@ from django.utils.formats import number_format
 # 3. Django: Núcleo y Base de Datos
 from django.conf import settings
 from django.db import models, transaction
+from django.core.serializers.json import DjangoJSONEncoder
 # ======================================================
 
 # ======================================================
@@ -2569,7 +2570,7 @@ class Financiacion_DetallePlanPago(models.Model):
     def __str__(self):
         return f"Cuota {self.numero_cuota} - {self.valor_cuota}"
 
-#-----------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------
 
 class EntidadesFinancieras(models.Model):
     from .utils import validar_nit 

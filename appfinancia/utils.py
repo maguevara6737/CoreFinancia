@@ -13,10 +13,10 @@ import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP, getcontext
-from typing import Literal, Union
+from typing import Literal, Optional, Union
 
 # ======================================================
-# 3. Librerías de terceros
+# 3. Librerías de terceros (instaladas vía pip)
 # ======================================================
 import pdfplumber
 from dateutil.relativedelta import relativedelta
@@ -29,7 +29,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 # ======================================================
 from django.conf import settings
 from django.core.cache import cache
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models, transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -38,6 +38,8 @@ from django.utils import timezone
 # 5. Modelos locales
 # ======================================================
 from .models import (
+    Clientes,
+    Conceptos_Transacciones,
     Desembolsos,
     Detalle_Aplicacion_Pago,
     Fechas_Sistema,
@@ -46,77 +48,11 @@ from .models import (
 )
 
 # ======================================================
-# 6. Configuración adicional (opcional pero recomendada al inicio)
-# ======================================================
-getcontext().prec = 28
-
-CACHE_TIMEOUT = 3600  # 1 hora
-
-# ======================================================
-# 1. Imports de compatibilidad futura (DEBEN ir primero)
-# ======================================================
-from __future__ import annotations
-
-# ======================================================
-# 2. Librerías estándar de Python
-# ======================================================
-import io
-import os
-import re
-from typing import Literal, Optional
-from datetime import date, datetime, timedelta
-from decimal import Decimal, ROUND_HALF_UP, getcontext
-
-# ======================================================
-# 3. Librerías de terceros (Instaladas vía pip)
-# ======================================================
-import pdfplumber
-from openpyxl import Workbook
-from typing import Literal, Union
-from openpyxl.cell.cell import MergedCell
-from dateutil.relativedelta import relativedelta
-from openpyxl.styles import Alignment, Font, PatternFill
-
-
-# ======================================================
-# 4. Django Core
-# ======================================================
-from django.conf import settings
-from django.db.models import Sum
-from django.utils import timezone
-from django.core.cache import cache
-from django.db import models, transaction
-from django.core.exceptions import ObjectDoesNotExist
-from django.core.exceptions import ValidationError
-
-# ======================================================
-# 5. Constantes Globales
-# ======================================================
-CACHE_TIMEOUT = 3600  # 1 hora
-
-# ======================================================
-# 6. Importaciones Locales (Modelos)
-# Se recomienda agruparlos para evitar redundancia y facilitar el mantenimiento
-# ======================================================
-from .models import (
-    Clientes,
-    Conceptos_Transacciones,
-    Desembolsos,
-    Detalle_Aplicacion_Pago,
-    Fechas_Sistema,
-    Historia_Prestamos,
-    Prestamos
-)
-
-# ======================================================
-# 7. Configuración opcional de precisión decimal si tu sistema lo requiere
+# 6. Configuración global.   --
 # ======================================================
 getcontext().prec = 28
 ROUND = ROUND_HALF_UP
-
-
-
-
+CACHE_TIMEOUT = 3600  # 1 hora
 
 
 #Obtener las Políticas de crédito

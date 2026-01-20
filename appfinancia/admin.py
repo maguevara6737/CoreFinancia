@@ -2571,6 +2571,7 @@ class FinanciacionForm(forms.ModelForm):
             raise forms.ValidationError("Por favor corrija los errores marcados abajo.")
         
         return cleaned_data
+#----------------------------
 
 #----------------------------
 @admin.register(Financiacion)
@@ -2739,25 +2740,6 @@ class FinanciacionAdmin(AdminBaseMoneda):
         "reenvio_email_aprobacion"
     )
 
-    '''
-    #lógica movida la botón leer correos de financiación.
-    @admin.action(description="📨 Leer correos de financiación (IMAP)")
-    def leer_correos_financiacion(self, request, queryset):
-        try:
-            procesar_emails()
-            self.message_user(
-                request,
-                "✔ Correos leídos correctamente.",
-                level=messages.SUCCESS
-            )
-        except Exception as e:
-            self.message_user(
-                request,
-                f"❌ Error leyendo correos: {e}",
-                level=messages.ERROR
-            )
-    ''''
-    
 
     @admin.action(description="✅ Aprobar solicitudes seleccionadas")
     #@admin.action(description="✔ Aprobar financiación")
@@ -3089,4 +3071,4 @@ class FinanciacionAdmin(AdminBaseMoneda):
                 f"Error al generar plan de pagos: {str(e)}", 
                 level=messages.ERROR
             )
-
+#______________________________________________________________________________________/*

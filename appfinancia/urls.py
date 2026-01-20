@@ -16,7 +16,7 @@ urlpatterns = [
     path('plan-pagos/<int:prestamo_id>/', views.plan_de_pagos_view, name='plan_pagos'),
     path('exportar-historia/<int:prestamo_id>/', views.exportar_historia_xlsx, name='exportar_historia_xlsx'),                      
     path("fragmentacion/fragmentar/<int:pago_id>/", views.fragmentar_pago, name="fragmentar_pago"),
-    path("regularizar-pago/<int:pago_id>/",views.regularizar_pago_view, name="regularizar_pago", ),
+    #path("regularizar-pago/<int:pago_id>/",views.regularizar_pago_view, name="regularizar_pago", ),
     #path("buscar-prestamo/", buscar_prestamo,name="buscar_prestamo"),
     #path("regularizar-pago/<int:pago_id>/",regularizar_pago_view,name="regularizar_pago"),
 ]

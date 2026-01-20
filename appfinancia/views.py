@@ -1,12 +1,18 @@
 # ======================================================
 # 1. Django Core
 # ======================================================
+from django.shortcuts import render, redirect
+from django.contrib.auth import authenticate, login, logout
+from django.contrib import messages
+from django.http import HttpRequest
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse, JsonResponse
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Max
 from django.utils import timezone
 from django.template.loader import render_to_string
+from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
 
 # ======================================================
 # 2. Autenticación y permisos
@@ -36,7 +42,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from weasyprint import HTML
-
+import logging
 # ======================================================
 # 6. Modelos locales
 # ======================================================
@@ -488,40 +494,7 @@ def fragmentar_pago(request, pago_id):
     return render(request, "appfinancia/fragmentacion_form.html", context)
 
 
-
-#====================
-#Regularizar pagps
-#====================
-
-
-""" @staff_member_required
-def regularizar_pago_view(request, pago_id):
-    pago = get_object_or_404(InBox_PagosDetalle, pago_id=pago_id)
-
-    if request.method == "POST":
-        form = RegularizarPagoForm(request.POST, instance=pago)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Pago regularizado correctamente.")
-            return redirect(
-                f"/admin/appfinancia/inbox_pagosdetalle/{pago_id}/change/"
-            )
-    else:
-        form = RegularizarPagoForm(instance=pago)
-
-    context = {
-        "title": "Regularizar Pagos",
-        "pago": pago,
-        "form": form,
-    }
-
-    return render(request, "appfinancia/regularizar_pago.html", context) """
-
-
 #-------------------------------------para el estado de cuenta -------------------
-# appfinancia/views.py
-
-
 
 def formato_numero(valor):
     """Formatea un número como string: 25487.4 → '25,487.40'"""
